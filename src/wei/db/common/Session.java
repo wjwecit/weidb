@@ -26,7 +26,7 @@ import org.apache.commons.dbutils.handlers.MapHandler;
 import org.apache.commons.dbutils.handlers.MapListHandler;
 import org.apache.log4j.Logger;
 
-import wei.db.annotation.TableKey;
+import wei.db.annotation.TablePrimaryKeyAnnotation;
 
 /**
  * 数据库核心操作类, 依赖近似原生态的jdbc处理方式完成数据操作。
@@ -59,7 +59,10 @@ public class Session {
 	 * @return Connection 对象
 	 */
 	public Connection getConnection() {
-		return g_connection != null ? g_connection : dbManager.getConnection();
+		if(g_connection == null){
+			g_connection=dbManager.getConnection();
+		}
+		return g_connection;
 	}
 
 	/**
@@ -99,7 +102,7 @@ public class Session {
 		MapHandler handler = new MapHandler();
 		try {
 			Map<String, Object> map = run.query(getConnection(), sql, handler);
-			log.debug("query sql=" + sql + ";mapsize=" + map.size());
+			log.debug("query sql=" + sql + ";map=" + map);
 			return map;
 		} catch (SQLException e) {
 			e.printStackTrace();
@@ -429,7 +432,7 @@ public class Session {
 		try {
 			Field[] fields = bean.getClass().getDeclaredFields();
 			for (Field field : fields) {
-				TableKey annotation = field.getAnnotation(TableKey.class);
+				TablePrimaryKeyAnnotation annotation = field.getAnnotation(TablePrimaryKeyAnnotation.class);
 				if (annotation != null) {
 					PropertyDescriptor properDescriptor = new PropertyDescriptor(field.getName(), bean.getClass());
 					Method getter = properDescriptor.getReadMethod();
