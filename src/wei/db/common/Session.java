@@ -26,6 +26,8 @@ import org.apache.commons.dbutils.handlers.MapHandler;
 import org.apache.commons.dbutils.handlers.MapListHandler;
 import org.apache.log4j.Logger;
 
+import wei.db.annotation.TableAIKeyAnnotation;
+import wei.db.annotation.TableNameAnnotation;
 import wei.db.annotation.TablePrimaryKeyAnnotation;
 
 /**
@@ -87,7 +89,7 @@ public class Session {
 	 */
 	public void commit() {
 		dbManager.rollbackAndClose(g_connection);
-		isInTransaction = true;
+		isInTransaction = false;
 	}
 
 	/**
@@ -95,7 +97,7 @@ public class Session {
 	 */
 	public void rollbackcommit() {
 		dbManager.commitAndClose(g_connection);
-		isInTransaction = true;
+		isInTransaction = false;
 	}
 
 	/**
@@ -116,7 +118,7 @@ public class Session {
 			e.printStackTrace();
 		} finally {
 			if (g_connection == null && !isInTransaction) {
-				dbManager.close();
+				dbManager.close(g_connection);
 			}
 		}
 		return null;
@@ -143,7 +145,7 @@ public class Session {
 			e.printStackTrace();
 		} finally {
 			if (g_connection == null && !isInTransaction) {
-				dbManager.close();
+				dbManager.close(g_connection);
 			}
 		}
 		return null;
@@ -171,7 +173,7 @@ public class Session {
 			e.printStackTrace();
 		} finally {
 			if (g_connection == null && !isInTransaction) {
-				dbManager.close();
+				dbManager.close(g_connection);
 			}
 		}
 		return null;
@@ -197,7 +199,7 @@ public class Session {
 			e.printStackTrace();
 		} finally {
 			if (g_connection == null && !isInTransaction) {
-				dbManager.close();
+				dbManager.close(g_connection);
 			}
 		}
 		return null;
@@ -221,7 +223,7 @@ public class Session {
 			e.printStackTrace();
 		} finally {
 			if (g_connection == null && !isInTransaction) {
-				dbManager.close();
+				dbManager.close(g_connection);
 			}
 		}
 		return null;
@@ -273,7 +275,7 @@ public class Session {
 	 *             如果在执行中有SQL异常发生,则抛出.
 	 */
 	public int update(Object bean) throws SQLException {
-		return update(bean, getKeyPropertyName(bean));
+		return update(bean, getTablePrimaryKey(bean));
 	}
 
 	/**
@@ -288,7 +290,7 @@ public class Session {
 	 *             如果在执行中有SQL异常发生,则抛出.
 	 */
 	public boolean insert(Object bean, String aikey) throws SQLException {
-		String tablename = bean.getClass().getSimpleName();
+		String tablename = getTableName(bean.getClass());
 		StringBuilder sqlk = new StringBuilder("insert into " + tablename + " ( ");
 		StringBuilder sqlv = new StringBuilder("values( ");
 		Map<String, Object> props = mapBeanProperties(bean);
@@ -322,7 +324,7 @@ public class Session {
 	 *             如果在执行中有SQL异常发生,则抛出.
 	 */
 	public boolean insert(Object bean) throws SQLException {
-		return insert(bean, getKeyPropertyName(bean));
+		return insert(bean, getTableAIKey(bean));
 	}
 
 	/**
@@ -352,7 +354,7 @@ public class Session {
 			throw e;
 		} finally {
 			if (g_connection == null && !isInTransaction) {
-				dbManager.close();
+				dbManager.close(g_connection);
 			}
 		}
 		return res;
@@ -396,10 +398,11 @@ public class Session {
 	}
 
 	/**
-	 * 将实体属性映射到map,必须符合java bean规范,拥有get读取方法．
+	 * Map bean properties into map object. All of the properties must follow standard java bean specification.
 	 * 
-	 * @param bean实体
-	 * @return map类型的映射
+	 * @param bean
+	 *            the bean to be maped
+	 * @return the maped java bean
 	 */
 	private static Map<String, Object> mapBeanProperties(Object bean) {
 		HashMap<String, Object> setterMap = new HashMap<String, Object>();
@@ -429,13 +432,33 @@ public class Session {
 	}
 
 	/**
-	 * 通过注解<code>@TableKey</code>得到数据表的主键字段名.<link>aa</link>
+	 * Get table name where marked <code>@TableNameAnnotation</code> in bean definition.
+	 * 
+	 * @param clz
+	 *            the name of bean
+	 * @return the name of the data table
+	 */
+
+	public static String getTableName(Class<?> clz) {
+		String res = null;
+		TableNameAnnotation annotation = clz.getDeclaredAnnotation(TableNameAnnotation.class);
+		if (annotation != null) {
+			res = annotation.name().equals("") ? clz.getSimpleName() : annotation.name();
+		}
+		if (res == null || res.length() < 1) {
+			throw new RuntimeException("Table name must be set in the entity class.");
+		}
+		return res;
+	}
+
+	/**
+	 * 通过注解<code>@TablePrimaryKeyAnnotation</code>得到数据表的主键字段名.<link>aa</link>
 	 * 
 	 * @param bean
 	 *            实体
 	 * @return 字串格式的主键字段名
 	 */
-	public static String getKeyPropertyName(Object bean) {
+	public static String getTablePrimaryKey(Object bean) {
 		String res = null;
 		try {
 			Field[] fields = bean.getClass().getDeclaredFields();
@@ -455,6 +478,33 @@ public class Session {
 		}
 		if (res == null || res.length() < 1) {
 			throw new RuntimeException("Key must be set in the entity class.");
+		}
+		return res;
+	}
+
+	/**
+	 * 通过注解<code>@TableNameAnnotation</code>得到数据表的自增长字段名.<link>aa</link>
+	 * 
+	 * @param bean
+	 *            实体
+	 */
+	public static String getTableAIKey(Object bean) {
+		String res = null;
+		try {
+			Field[] fields = bean.getClass().getDeclaredFields();
+			for (Field field : fields) {
+				TableAIKeyAnnotation annotation = field.getAnnotation(TableAIKeyAnnotation.class);
+				if (annotation != null) {
+					PropertyDescriptor properDescriptor = new PropertyDescriptor(field.getName(), bean.getClass());
+					Method getter = properDescriptor.getReadMethod();
+					if (getter != null) {
+						res = annotation.columnName().equals("") ? field.getName() : annotation.columnName();
+						return res;
+					}
+				}
+			}
+		} catch (IntrospectionException e) {
+			e.printStackTrace();
 		}
 		return res;
 	}
