@@ -59,8 +59,8 @@ public class Session {
 	 * @return Connection 对象
 	 */
 	public Connection getConnection() {
-		if(g_connection == null){
-			g_connection=dbManager.getConnection();
+		if (g_connection == null) {
+			g_connection = dbManager.getConnection();
 		}
 		return g_connection;
 	}
@@ -85,7 +85,15 @@ public class Session {
 	/**
 	 * 配合{@link #beginTransaction()}进行使用,提交事务并关闭连接
 	 */
-	public void endTransaction() {
+	public void commit() {
+		dbManager.rollbackAndClose(g_connection);
+		isInTransaction = true;
+	}
+
+	/**
+	 * 配合{@link #beginTransaction()}进行使用,回滚事务并关闭连接
+	 */
+	public void rollbackcommit() {
 		dbManager.commitAndClose(g_connection);
 		isInTransaction = true;
 	}
