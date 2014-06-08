@@ -15,7 +15,7 @@ import java.lang.annotation.Target;
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.FIELD)
-public @interface TableKey {
+public @interface TablePrimaryKeyAnnotation {
 	/**
 	 * 主键的字段名,默认是空白
 	 */
