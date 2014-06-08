@@ -38,18 +38,18 @@ public class Session {
 
 	private static final Logger log = Logger.getLogger(Session.class);
 
-	private DBManager dbManager;
+	private DBConnectionManager dbManager;
 
 	private Connection g_connection = null;
 
 	private boolean isInTransaction = false;
 
 	public Session() {
-		dbManager = new DBManager();
+		dbManager = new DBConnectionManager();
 	}
 
 	public Session(Connection conn) {
-		dbManager = new DBManager();
+		dbManager = new DBConnectionManager();
 		g_connection = conn;
 	}
 

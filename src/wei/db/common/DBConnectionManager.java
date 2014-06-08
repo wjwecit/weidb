@@ -16,9 +16,9 @@ import com.mchange.v2.c3p0.ComboPooledDataSource;
  * @author wei
  * 
  */
-public class DBManager {
+public class DBConnectionManager {
 
-	private static final Logger log = Logger.getLogger(DBManager.class);
+	private static final Logger log = Logger.getLogger(DBConnectionManager.class);
 	/** mysql类型DB, 值为{@value} **/
 	public static final int DB_TYPE_MYSQL = 0x1;
 
@@ -119,6 +119,26 @@ public class DBManager {
 	}
 
 	/**
+	 * 回滚并关闭连接conn.
+	 * 
+	 * @param conn
+	 *            物理连接
+	 */
+	protected void rollbackAndClose(Connection conn) {
+		if (conn != null) {
+			try {
+				conn.rollback();
+				conn.close();
+			} catch (SQLException e) {
+				log.error("回滚关闭连接时出现异常", e);
+			} finally {
+				/** 卸装线程绑定 **/
+				threadSession.remove();
+			}
+		}
+	}
+
+	/**
 	 * 提交事务并关闭 sql 连接。
 	 * 
 	 * @param conn
@@ -141,5 +161,4 @@ public class DBManager {
 			}
 		}
 	}
-
 }
