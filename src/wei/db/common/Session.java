@@ -27,6 +27,7 @@ import org.apache.commons.dbutils.handlers.MapListHandler;
 import org.apache.log4j.Logger;
 
 import wei.db.annotation.TableAIKeyAnnotation;
+import wei.db.annotation.TableColumnAnnotation;
 import wei.db.annotation.TableNameAnnotation;
 import wei.db.annotation.TablePrimaryKeyAnnotation;
 
@@ -261,7 +262,7 @@ public class Session {
 		int index = update.lastIndexOf(",");
 		update.replace(index, update.length(), " ");
 		update.append("where " + key + "=?");
-		return update(update.toString(), values.toArray());
+		return executeUpdate(update.toString(), values.toArray());
 	}
 
 	/**
@@ -279,7 +280,7 @@ public class Session {
 	}
 
 	/**
-	 * 执行插入操作. 此方法务必放在doWithinTransaction方法中进行实施,以达到对事务的处理.
+	 * Insert into data table. AI　key should be specified
 	 * 
 	 * @param bean
 	 *            被操作的实体bean.
@@ -310,7 +311,7 @@ public class Session {
 		sqlk.replace(indexk, sqlk.length(), ")");
 		sqlv.replace(indexv, sqlv.length(), ")");
 		sqlk.append(sqlv);
-		return update(sqlk.toString(), values.toArray()) > 0;
+		return executeUpdate(sqlk.toString(), values.toArray()) > 0;
 	}
 
 	/**
@@ -328,18 +329,17 @@ public class Session {
 	}
 
 	/**
-	 * 使用?占位符执行更新操作,可以是update, insert, delete.
-	 * 此方法务必放在doWithinTransaction方法中进行实施,以达到对事务的处理.
+	 * Take '?' placeholder to execute DML SQL statement(update, insert, delete).
 	 * 
 	 * @param sql
-	 *            要执行的原生态SQL语句.
+	 *            the SQL statement.
 	 * @param params
-	 *            参数数组
-	 * @return 影响的记录数
+	 *            the parameters array
+	 * @return how many rows effected
 	 * @throws SQLException
-	 *             如果在执行中有SQL异常发生,则抛出.
+	 *             if there is any SQLException, popup it.
 	 */
-	public int update(String sql, Object[] params) throws SQLException {
+	public int executeUpdate(String sql, Object[] params) throws SQLException {
 		int res = 0;
 		Connection conn = getConnection();
 		try {
@@ -431,6 +431,29 @@ public class Session {
 		return setterMap;
 	}
 
+	public static Map<String, Object> getTableMapFromBean(Object bean) {
+		HashMap<String, Object> result = null;
+		try {
+			Field[] fields = bean.getClass().getDeclaredFields();
+			for (Field field : fields) {
+				TableColumnAnnotation annotation = field.getAnnotation(TableColumnAnnotation.class);
+				if (annotation != null) {
+					PropertyDescriptor properDescriptor = new PropertyDescriptor(field.getName(), bean.getClass());
+					Method getter = properDescriptor.getReadMethod();
+					if (getter != null) {
+						// res = annotation.columnName().equals("") ? field.getName() : annotation.columnName();
+					}
+				}
+			}
+		} catch (IntrospectionException e) {
+			e.printStackTrace();
+		}
+		if (result == null || result.size() < 1) {
+			throw new RuntimeException("Key must be set in the entity class.");
+		}
+		return result;
+	}
+
 	/**
 	 * Get table name where marked <code>@TableNameAnnotation</code> in bean definition.
 	 * 
@@ -468,7 +491,8 @@ public class Session {
 					PropertyDescriptor properDescriptor = new PropertyDescriptor(field.getName(), bean.getClass());
 					Method getter = properDescriptor.getReadMethod();
 					if (getter != null) {
-						res = annotation.columnName().equals("") ? field.getName() : annotation.columnName();
+						TableColumnAnnotation annotation2 = field.getAnnotation(TableColumnAnnotation.class);
+						res = annotation2.columnName().equals("") ? field.getName() : annotation2.columnName();
 						return res;
 					}
 				}
@@ -483,12 +507,15 @@ public class Session {
 	}
 
 	/**
-	 * 通过注解<code>@TableNameAnnotation</code>得到数据表的自增长字段名.<link>aa</link>
+	 * Get auto incrace key for the mapped data table where marked <code>@TableAIKeyAnnotation</code>
 	 * 
 	 * @param bean
-	 *            实体
+	 *            the bean to be mapped
 	 */
 	public static String getTableAIKey(Object bean) {
+		if (getTableName(bean.getClass()) == null) {
+			throw new RuntimeException("Table name must be set in the entity class:" + bean.getClass());
+		}
 		String res = null;
 		try {
 			Field[] fields = bean.getClass().getDeclaredFields();
@@ -498,7 +525,8 @@ public class Session {
 					PropertyDescriptor properDescriptor = new PropertyDescriptor(field.getName(), bean.getClass());
 					Method getter = properDescriptor.getReadMethod();
 					if (getter != null) {
-						res = annotation.columnName().equals("") ? field.getName() : annotation.columnName();
+						TableColumnAnnotation annotation2 = field.getAnnotation(TableColumnAnnotation.class);
+						res = annotation2.columnName().equals("") ? field.getName() : annotation2.columnName();
 						return res;
 					}
 				}
