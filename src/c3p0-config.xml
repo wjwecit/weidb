@@ -1,13 +1,15 @@
 <c3p0-config>
-    <default-config>
-      <property name="driverClass">com.mysql.jdbc.Driver</property>
-		<property name="jdbcUrl">jdbc:mysql://192.168.26.137:3306/test?useUnicode=true&amp;characterEncoding=UTF-8&amp;autoReconnect=true&amp;failOverReadOnly=false</property>
+	<default-config>
+		<property name="driverClass">com.mysql.jdbc.Driver</property>
+		<property name="jdbcUrl">
+			jdbc:mysql://localhost:3306/test?useUnicode=true&amp;characterEncoding=UTF-8&amp;autoReconnect=true&amp;failOverReadOnly=false
+		</property>
 		<property name="user">root</property>
 		<property name="password">123</property>
-    </default-config>
-<!-- This app is massive! -->
-    <named-config name="weidb">
-       <property name="initialPoolSize">3</property>
+	</default-config>
+	<!-- This app is massive! -->
+	<named-config name="defaultdb">
+		<property name="initialPoolSize">3</property>
 		<property name="maxPoolSize">3</property>
 		<property name="minPoolSize">1</property>
 		<property name="acquireIncrement">5</property>
@@ -18,12 +20,12 @@
 		<property name="maxStatementsPerConnection">50</property>
 		<property name="numHelperThreads">5</property>
 		<property name="preferredTestQuery">SELECT 1</property>
-        <user-overrides user="master-of-the-universe">
-            <property name="acquireIncrement">1</property>
-            <property name="initialPoolSize">1</property>
-            <property name="minPoolSize">1</property>
-            <property name="maxPoolSize">5</property>
-            <property name="maxStatementsPerConnection">50</property>
-        </user-overrides>
-    </named-config>
+		<user-overrides user="master-of-the-universe">
+			<property name="acquireIncrement">1</property>
+			<property name="initialPoolSize">1</property>
+			<property name="minPoolSize">1</property>
+			<property name="maxPoolSize">5</property>
+			<property name="maxStatementsPerConnection">50</property>
+		</user-overrides>
+	</named-config>
 </c3p0-config>
