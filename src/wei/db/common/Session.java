@@ -244,7 +244,7 @@ public class Session {
 	public int update(Object bean, String key) throws SQLException {
 		String tablename = bean.getClass().getSimpleName().toLowerCase();
 		StringBuilder update = new StringBuilder("update " + tablename + " set ");
-		Map<String, Object> props = mapBeanProperties(bean);
+		Map<String, Object> props = getTableMapFromBean(bean);
 		ArrayList<Object> values = new ArrayList<Object>();
 		Object keyValue = null;
 		for (Map.Entry<String, Object> e : props.entrySet()) {
@@ -294,7 +294,7 @@ public class Session {
 		String tablename = getTableName(bean.getClass());
 		StringBuilder sqlk = new StringBuilder("insert into " + tablename + " ( ");
 		StringBuilder sqlv = new StringBuilder("values( ");
-		Map<String, Object> props = mapBeanProperties(bean);
+		Map<String, Object> props = getTableMapFromBean(bean);
 		ArrayList<Object> values = new ArrayList<Object>();
 		for (Map.Entry<String, Object> e : props.entrySet()) {
 			if (!e.getKey().equalsIgnoreCase(aikey)) {
@@ -404,8 +404,9 @@ public class Session {
 	 *            the bean to be maped
 	 * @return the maped java bean
 	 */
-	private static Map<String, Object> mapBeanProperties(Object bean) {
+	public static Map<String, Object> getTableMapFromBean(Object bean) {
 		HashMap<String, Object> setterMap = new HashMap<String, Object>();
+
 		try {
 			BeanInfo info = Introspector.getBeanInfo(bean.getClass());
 			PropertyDescriptor[] descritors = info.getPropertyDescriptors();
@@ -421,7 +422,7 @@ public class Session {
 					if (value == null) {
 						continue;
 					}
-					setterMap.put(propertyName, value);
+					setterMap.put(getTableColumn(bean, propertyName), value);
 				}
 			}
 		} catch (Exception e) {
@@ -429,29 +430,6 @@ public class Session {
 			setterMap = null;
 		}
 		return setterMap;
-	}
-
-	public static Map<String, Object> getTableMapFromBean(Object bean) {
-		HashMap<String, Object> result = null;
-		try {
-			Field[] fields = bean.getClass().getDeclaredFields();
-			for (Field field : fields) {
-				TableColumnAnnotation annotation = field.getAnnotation(TableColumnAnnotation.class);
-				if (annotation != null) {
-					PropertyDescriptor properDescriptor = new PropertyDescriptor(field.getName(), bean.getClass());
-					Method getter = properDescriptor.getReadMethod();
-					if (getter != null) {
-						// res = annotation.columnName().equals("") ? field.getName() : annotation.columnName();
-					}
-				}
-			}
-		} catch (IntrospectionException e) {
-			e.printStackTrace();
-		}
-		if (result == null || result.size() < 1) {
-			throw new RuntimeException("Key must be set in the entity class.");
-		}
-		return result;
 	}
 
 	/**
@@ -533,6 +511,46 @@ public class Session {
 			}
 		} catch (IntrospectionException e) {
 			e.printStackTrace();
+		}
+		return res;
+	}
+
+	/**
+	 * Get the column name corresponding to the mapped bean. If there is no comumn mapped to this bean
+	 * property, an runtime exception will be thrown.
+	 * 
+	 * @param bean
+	 *            the mapped bean
+	 * @param property
+	 *            the property in the bean
+	 * @return the column of the data table
+	 */
+	public static String getTableColumn(Object bean, String property) {
+		if (getTableName(bean.getClass()) == null) {
+			throw new RuntimeException("Table name must be set in the entity class:" + bean.getClass());
+		}
+		String res = null;
+		try {
+			Field[] fields = bean.getClass().getDeclaredFields();
+			for (Field field : fields) {
+				if (!field.getName().equalsIgnoreCase(property)) {
+					continue;
+				}
+				TableColumnAnnotation annotation = field.getAnnotation(TableColumnAnnotation.class);
+				if (annotation != null) {
+					PropertyDescriptor properDescriptor = new PropertyDescriptor(field.getName(), bean.getClass());
+					Method getter = properDescriptor.getReadMethod();
+					if (getter != null) {
+						res = annotation.columnName().equals("") ? field.getName() : annotation.columnName();
+						return res;
+					}
+				}
+			}
+		} catch (IntrospectionException e) {
+			e.printStackTrace();
+		}
+		if (res == null || res.length() < 1) {
+			throw new RuntimeException("Comumn annotation must be set in the entity class:" + bean.getClass());
 		}
 		return res;
 	}
