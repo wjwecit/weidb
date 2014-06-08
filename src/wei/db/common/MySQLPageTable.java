@@ -8,10 +8,10 @@ import org.apache.log4j.Logger;
 /**
  * @author Wangjw 显示分页表格数据，使用原生态的SQL统计，并返回数组形式之数据。
  */
-public class MysqlPageTable extends AbstractPageTable{
+public class MySQLPageTable extends AbstractPageTable{
 	
 	/**log日志对象**/
-	private static Logger log = Logger.getLogger(MysqlPageTable.class);
+	private static Logger log = Logger.getLogger(MySQLPageTable.class);
 	
 	protected String getCountSql(){
 		return "select count(*) from(" + this.sql + ")ttcount";
