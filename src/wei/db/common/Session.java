@@ -194,7 +194,7 @@ public class Session {
 		ResultSetHandler<List<T>> handler = new BeanListHandler<T>(clz);
 		try {
 			List<T> list = run.query(getConnection(), sql, handler);
-			log.debug("Query SQL=" + sql + ";listsize=" + list.size());
+			log.debug("query sql=" + sql + ";listsize=" + list.size());
 			return list;
 		} catch (SQLException e) {
 			e.printStackTrace();
@@ -325,7 +325,25 @@ public class Session {
 	 *             如果在执行中有SQL异常发生,则抛出.
 	 */
 	public boolean insert(Object bean) throws SQLException {
-		return insert(bean, getTableAIKey(bean));
+		String tablename = getTableName(bean.getClass());
+		StringBuilder sqlk = new StringBuilder("insert into " + tablename + "(");
+		StringBuilder sqlv = new StringBuilder("values(");
+		Map<String, Object> props = getTableMapFromBean(bean);
+		ArrayList<Object> values = new ArrayList<Object>();
+		for (Map.Entry<String, Object> e : props.entrySet()) {
+			sqlk.append(e.getKey() + ",");
+			sqlv.append("?,");
+			values.add(e.getValue());
+		}
+		int indexk = sqlk.lastIndexOf(",");
+		int indexv = sqlv.lastIndexOf(",");
+		if (indexk < 0 || indexv < 0) {
+			throw new RuntimeException("Can not insert, value must be set.");
+		}
+		sqlk.replace(indexk, sqlk.length(), ")");
+		sqlv.replace(indexv, sqlv.length(), ")");
+		sqlk.append(sqlv);
+		return executeUpdate(sqlk.toString(), values.toArray()) > 0;
 	}
 
 	/**
@@ -377,7 +395,7 @@ public class Session {
 		int paramsCount = params == null ? 0 : params.length;
 
 		if (stmtCount != paramsCount) {
-			throw new SQLException("Wrong number of parameters: expected " + stmtCount + ", was given " + paramsCount);
+			throw new SQLException("Wrong number of parameters: expected " + stmtCount + ", while given " + paramsCount);
 		}
 		if (params == null) {
 			return;
@@ -405,9 +423,27 @@ public class Session {
 	 * @return the maped java bean
 	 */
 	public static Map<String, Object> getTableMapFromBean(Object bean) {
-		HashMap<String, Object> setterMap = new HashMap<String, Object>();
+		HashMap<String, Object> beanMap = new HashMap<String, Object>();
+
+		Class<? extends Object> clz = bean.getClass();
+		TableNameAnnotation tableAnnotation = clz.getDeclaredAnnotation(TableNameAnnotation.class);
+		if (tableAnnotation == null) {
+			throw new RuntimeException("Table name must be set in the entity class.");
+		}
 
 		try {
+			if (tableAnnotation.autoMap()) {
+				Field[] fields = bean.getClass().getDeclaredFields();
+				for (Field field : fields) {
+					field.setAccessible(true);
+					Object value = field.get(bean);
+					if (value != null && !value.equals(getInitialVlue(value))) {
+						beanMap.put(getTableColumn(bean, field.getName()), value);
+					}
+				}
+				return beanMap;
+			}
+
 			BeanInfo info = Introspector.getBeanInfo(bean.getClass());
 			PropertyDescriptor[] descritors = info.getPropertyDescriptors();
 			int size = descritors.length;
@@ -419,17 +455,17 @@ public class Session {
 				Method method = descritors[index].getReadMethod();
 				if (method != null) {
 					Object value = method.invoke(bean, new Object[] {});
-					if (value == null) {
+					if (value == null || value.equals(getInitialVlue(value))) {
 						continue;
 					}
-					setterMap.put(getTableColumn(bean, propertyName), value);
+					beanMap.put(getTableColumn(bean, propertyName), value);
 				}
 			}
 		} catch (Exception e) {
 			e.printStackTrace();
-			setterMap = null;
+			beanMap = null;
 		}
-		return setterMap;
+		return beanMap;
 	}
 
 	/**
@@ -526,9 +562,6 @@ public class Session {
 	 * @return the column of the data table
 	 */
 	public static String getTableColumn(Object bean, String property) {
-		if (getTableName(bean.getClass()) == null) {
-			throw new RuntimeException("Table name must be set in the entity class:" + bean.getClass());
-		}
 		String res = null;
 		try {
 			Field[] fields = bean.getClass().getDeclaredFields();
@@ -544,6 +577,8 @@ public class Session {
 						res = annotation.columnName().equals("") ? field.getName() : annotation.columnName();
 						return res;
 					}
+				} else {
+					return field.getName();
 				}
 			}
 		} catch (IntrospectionException e) {
@@ -553,5 +588,37 @@ public class Session {
 			throw new RuntimeException("Comumn annotation must be set in the entity class:" + bean.getClass());
 		}
 		return res;
+	}
+
+	/**
+	 * Get the initial value for the specified object.
+	 * 
+	 * @param obj
+	 *            the object to be valued
+	 * @return the corresponding initial value for this object
+	 */
+	public static Object getInitialVlue(Object obj) {
+		if (obj == null) {
+			return obj;
+		}
+		Class<? extends Object> type = obj.getClass();
+		if (type == Boolean.TYPE || type == Boolean.class)
+			return false;
+		if (type == Byte.TYPE || type == Byte.class)
+			return new Byte((byte) 0);
+		if (type == Character.TYPE || type == Character.class)
+			return new Character('\000');
+		if (type == Double.TYPE || type == Double.class)
+			return new Double(0.0D);
+		if (type == Float.TYPE || type == Float.class)
+			return new Float(0.0F);
+		if (type == Integer.TYPE || type == Integer.class)
+			return new Integer(0);
+		if (type == Long.TYPE || type == Long.class)
+			return new Long(0L);
+		if (type == Short.TYPE || type == Short.class) {
+			return new Short((short) 0);
+		}
+		return null;
 	}
 }

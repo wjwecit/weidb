@@ -14,5 +14,10 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
 public @interface TableNameAnnotation {
+
+	/** table name in database **/
 	public String name() default "";
+
+	/** auto mapping column to java bean properties **/
+	public boolean autoMap() default true;
 }
