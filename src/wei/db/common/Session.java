@@ -51,9 +51,9 @@ public class Session {
 	}
 
 	/**
-	 * 获得当前线程中的绑定的sql connection.
+	 * Fetch a phisical sql connection from current thread.
 	 * 
-	 * @return Connection 对象
+	 * @return Connection object
 	 */
 	public Connection getConnection() {
 		if (g_connection == null) {
@@ -63,11 +63,15 @@ public class Session {
 	}
 
 	/**
-	 * 开启一个事务,这会将现有的连接设置autoCommit=false,后续的操作直至遇到{@link #endTransaction} 时 才会进行
-	 * 事务的commit或者rollback, 并关闭连接. 因此,一旦开启了事务,必须显式结束事务,否则
-	 * 将引发连接泄漏.
+	 * Begin a transaction this will set autoCommit=true, wait for
+	 * {@link #commit} or {@link #rollback}<br>
+	 * Caution: thread open an transaction must be end it.
 	 */
 	public void beginTransaction() {
+		if (isInTransaction) {
+			throw new IllegalAccessError("Thread :" + Thread.currentThread().getName()
+					+ " had already in transaction, must end it first!");
+		}
 		try {
 			if (g_connection == null || g_connection.isClosed()) {
 				g_connection = dbManager.getConnection();
@@ -80,7 +84,7 @@ public class Session {
 	}
 
 	/**
-	 * 配合{@link #beginTransaction()}进行使用,提交事务并关闭连接
+	 * Commit and close phisical connection.
 	 */
 	public void commit() {
 		dbManager.commitAndClose(g_connection);
@@ -88,7 +92,7 @@ public class Session {
 	}
 
 	/**
-	 * 配合{@link #beginTransaction()}进行使用,回滚事务并关闭连接
+	 * Rollback and close phisical connection.
 	 */
 	public void rollback() {
 		dbManager.rollbackAndClose(g_connection);
@@ -96,11 +100,12 @@ public class Session {
 	}
 
 	/**
-	 * 将查询结果映射到实体Map中.
+	 * Mapping resultset into HashMap object.
 	 * 
 	 * @param sql
-	 *            执行查询的sql语句
-	 * @return 如果执行记录集中有结果,将返回第一个结果并注入到Map中,如果无记录则返回null.
+	 *            sql statement
+	 * @return mapped hashmap if the resultset is not empty, if result is empty,
+	 *         it is null.
 	 */
 	public Map<String, Object> getMap(String sql) {
 		QueryRunner run = new QueryRunner();
@@ -120,13 +125,14 @@ public class Session {
 	}
 
 	/**
-	 * 将查询结果映射到实体bean中的属性.
+	 * Mapping resultset into java bean object.
 	 * 
 	 * @param clz
-	 *            bean类
+	 *            class for java bean
 	 * @param sql
-	 *            执行查询的sql语句
-	 * @return 如果执行记录集中有结果,将返回第一个结果并注入到bean中,如果无记录则返回null.
+	 *            sql statement
+	 * @return mapped java bean if the resultset is not empty, if result is
+	 *         empty, it is null.
 	 */
 	public <T> T getBean(Class<T> clz, String sql) {
 
@@ -147,15 +153,16 @@ public class Session {
 	}
 
 	/**
-	 * 将查询结果映射到实体bean中的属性.
+	 * Mapping resultset into java bean object.
 	 * 
 	 * @param clz
-	 *            bean类
+	 *            class for java bean
 	 * @param sql
-	 *            执行查询的sql语句
+	 *            sql statement
 	 * @param params
-	 *            sql参数
-	 * @return 如果执行记录集中有结果,将返回第一个结果并注入到bean中,如果无记录则返回null.
+	 *            sql statement parameter array
+	 * @return mapped java bean if the resultset is not empty, if result is
+	 *         empty, it is null.
 	 */
 	public <T> T getBean(Class<T> clz, String sql, Object[] params) {
 		QueryRunner run = new QueryRunner();
@@ -175,13 +182,14 @@ public class Session {
 	}
 
 	/**
-	 * 将查询结果注入到实体bean中的对应属性,并以列表的形式存放结果集.
+	 * Mapping resultset into java bean list.
 	 * 
 	 * @param clz
-	 *            bean类
+	 *            class for java bean
 	 * @param sql
-	 *            执行查询的sql语句
-	 * @return 如果执行记录集中有结果,将返回结果并注入到bean中,如果无记录则返回null.
+	 *            sql statement
+	 * @return mapped java bean list if the resultset is not empty, if result is
+	 *         empty, it is null.
 	 */
 	public <T> List<T> getBeanList(Class<T> clz, String sql) {
 		QueryRunner run = new QueryRunner();
@@ -201,11 +209,12 @@ public class Session {
 	}
 
 	/**
-	 * 将查询结果注入到实体Map中的对应属性,并以列表的形式存放结果集.
+	 * Mapping resultset into HashMap list.
 	 * 
 	 * @param sql
-	 *            执行查询的sql语句
-	 * @return 如果执行记录集中有结果,将返回结果并注入到Map中,如果无记录则返回null.
+	 *            sql statement
+	 * @return mapped HashMap list if the resultset is not empty, if result is
+	 *         empty, it is null.
 	 */
 	public List<Map<String, Object>> getMapList(String sql) {
 		QueryRunner run = new QueryRunner();
@@ -225,15 +234,15 @@ public class Session {
 	}
 
 	/**
-	 * 执行更新操作. 此方法务必放在doWithinTransaction方法中进行实施,以达到对事务的处理.
+	 * Update operation for mapped java bean.
 	 * 
 	 * @param bean
-	 *            即将被更新的实体bean.
+	 *            java bean.
 	 * @param key
-	 *            bean中的主键,可以不是真正的物理数据表主键,仅作为一个更新条件.
-	 * @return 返回更新的记录行数,有可能给出的key存在多条匹配.
+	 *            primary key for data base table
+	 * @return effected rows count
 	 * @throws SQLException
-	 *             如果在执行中有SQL异常发生,则抛出.
+	 *             throw SQLException if any.
 	 */
 	public int update(Object bean, String key) throws SQLException {
 		String tablename = bean.getClass().getSimpleName().toLowerCase();
@@ -260,52 +269,17 @@ public class Session {
 	}
 
 	/**
-	 * 执行更新操作,必须在bean中添加主键注解<code>@TableKey</code>.
-	 * 此方法务必放在doWithinTransaction方法中进行实施,以达到对事务的处理.
+	 * Update operation for mapped java bean. The primary key should be
+	 * annotation via<code>@Table</code>.
 	 * 
 	 * @param bean
-	 *            即将被更新的实体bean.
-	 * @return 返回更新的记录行数,有可能给出的key存在多条匹配.
+	 *            java bean.
+	 * @return effected rows count
 	 * @throws SQLException
-	 *             如果在执行中有SQL异常发生,则抛出.
+	 *             throw SQLException if any.
 	 */
 	public int update(Object bean) throws SQLException {
 		return update(bean, getTablePrimaryKey(bean.getClass()));
-	}
-
-	/**
-	 * Insert into data table. AI　key should be specified
-	 * 
-	 * @param bean
-	 *            被操作的实体bean.
-	 * @param aikey
-	 *            数据表中的唯一一个自增长键名称
-	 * @return 操作是否成功.
-	 * @throws SQLException
-	 *             如果在执行中有SQL异常发生,则抛出.
-	 */
-	public boolean insert(Object bean, String aikey) throws SQLException {
-		String tablename = getTableName(bean.getClass());
-		StringBuilder sqlk = new StringBuilder("insert into " + tablename + " ( ");
-		StringBuilder sqlv = new StringBuilder("values( ");
-		Map<String, Object> props = getTableMapFromBean(bean);
-		ArrayList<Object> values = new ArrayList<Object>();
-		for (Map.Entry<String, Object> e : props.entrySet()) {
-			if (!e.getKey().equalsIgnoreCase(aikey)) {
-				sqlk.append(e.getKey() + ",");
-				sqlv.append("?,");
-				values.add(e.getValue());
-			}
-		}
-		int indexk = sqlk.lastIndexOf(",");
-		int indexv = sqlv.lastIndexOf(",");
-		if (indexk < 0 || indexv < 0) {
-			throw new RuntimeException("Can not insert, value must be set.");
-		}
-		sqlk.replace(indexk, sqlk.length(), ")");
-		sqlv.replace(indexv, sqlv.length(), ")");
-		sqlk.append(sqlv);
-		return executeUpdate(sqlk.toString(), values.toArray()) > 0;
 	}
 
 	/**
@@ -341,7 +315,8 @@ public class Session {
 	}
 
 	/**
-	 * Take '?' placeholder to execute DML SQL statement(update, insert, delete).
+	 * Take '?' placeholder to execute DML SQL statement(update, insert,
+	 * delete).
 	 * 
 	 * @param sql
 	 *            the SQL statement.
@@ -373,14 +348,14 @@ public class Session {
 	}
 
 	/**
-	 * 使用参数数组注入PreaparedStatement,即将参数数组替换语句中的?点位符.
+	 * Inject into PreaparedStatement with parameter array, with replaceholder.
 	 * 
 	 * @param pstmt
-	 *            PreaparedStatement对象
+	 *            PreaparedStatement statement
 	 * @param params
-	 *            参数数组
+	 *            parameter array
 	 * @throws SQLException
-	 *             如果在执行中有SQL异常发生,则抛出.
+	 *             throw SQLException if any.
 	 */
 	private static void fillStatement(PreparedStatement pstmt, Object[] params) throws SQLException {
 		ParameterMetaData pmd = null;
@@ -410,7 +385,8 @@ public class Session {
 	}
 
 	/**
-	 * Map bean properties into map object. All of the properties must follow standard java bean specification.
+	 * Map bean properties into map object. All of the properties must follow
+	 * standard java bean specification.
 	 * 
 	 * @param bean
 	 *            the bean to be maped
@@ -450,7 +426,8 @@ public class Session {
 	}
 
 	/**
-	 * Get table name where marked <code>@TableNameAnnotation</code> in bean definition.
+	 * Get table name where marked <code>@TableNameAnnotation</code> in bean
+	 * definition.
 	 * 
 	 * @param clz
 	 *            the name of bean
@@ -470,11 +447,12 @@ public class Session {
 	}
 
 	/**
-	 * 通过注解<code>@TablePrimaryKeyAnnotation</code>得到数据表的主键字段名.<link>aa</link>
+	 * Get primary key for data base table via
+	 * <code>@TablePrimaryKeyAnnotation</code>.
 	 * 
 	 * @param bean
-	 *            实体
-	 * @return 字串格式的主键字段名
+	 *            java bean object
+	 * @return primary key name.
 	 */
 	public static String getTablePrimaryKey(Class<?> clz) {
 		String res = null;
@@ -519,30 +497,31 @@ public class Session {
 		}
 		return null;
 	}
-	
+
 	/**
-	 * 执行插入操作. 必须在bean中添加主键注解<code>@TableKey</code>.
+	 * Insert and return auto increate key value.
 	 * 
 	 * @param bean
-	 *            被操作的实体bean.
-	 * @return 操作是否成功.
+	 *            java bean.
+	 * @return the AI value
 	 * @throws SQLException
-	 *             如果在执行中有SQL异常发生,则抛出.
+	 *             throw SQLException if any.
 	 */
-	public synchronized long AIinsert(Object bean) throws SQLException {
+	public long AIinsert(Object bean) throws SQLException {
 		if (!insert(bean))
 			return -1;
 		return getLong("SELECT (AUTO_INCREMENT-1)as id FROM information_schema.tables  WHERE table_name='" + getTableName(bean.getClass()) + "'");
 	}
-	
+
 	/**
-	 * 带点位符格式得到结果集中第一行第一列的Long类数据. 多余的数据将被忽略.
+	 * Fetch long value for first line first column in the resultset.
 	 * 
 	 * @param sql
-	 *            SQL语句,可以是带?的点位符
+	 *            sql statement with spaceholders '?'
 	 * @param params
-	 *            参数列表
-	 * @return 长整型结果
+	 *            parameter array
+	 * @return long value, if there is no such a result or there is any error
+	 *         return 0L.
 	 */
 	public long getLong(String sql, Object[] params) {
 		Connection conn = getConnection();
@@ -562,33 +541,32 @@ public class Session {
 		}
 		return 0L;
 	}
-	
-	
-	
-	
+
 	/**
-	 * 得到结果集中第一行第一列的Long类数据. 多余的数据将被忽略.
+	 * Fetch long value for first line first column in the resultset.
 	 * 
 	 * @param sql
-	 *            SQL语句
-	 * @return 长整型结果
+	 *            sql statement
+	 * @return long value, if there is no such a result or there is any error
+	 *         return 0L.
 	 */
 	public long getLong(String sql) {
 		return getLong(sql, null);
 	}
 
-
 	/**
-	 * 海量数据遍历结果集时专用方法. 使用此方法时,记录集将按需要读取,不再是一次性全部装入内存.<br>
-	 * 程序中应将数据集较大的优先使用本方法,从而避免OOM异常出现.
+	 * Huge query and resolve method. Instead of loading resultset from data
+	 * base once, <br>
+	 * this method load data by need to prevent from OOM.
 	 * 
 	 * @param sql
-	 *            执行的SQL
+	 *            sql statement
 	 * @param executor
-	 *            查询处理器接口,实现此接口,用以结果集的处理.
+	 *            query executor, implementing this interface and put your fetch
+	 *            logic into it.
 	 */
 	public void hugeQuery(String sql, QueryExecutor executor) {
-		Connection conn =dbManager.newConnection();
+		Connection conn = dbManager.newConnection();
 		try {
 			PreparedStatement pst = conn.prepareStatement(
 					sql,
@@ -608,4 +586,5 @@ public class Session {
 			executor.after();
 			dbManager.close(conn);
 		}
-	}}
+	}
+}
