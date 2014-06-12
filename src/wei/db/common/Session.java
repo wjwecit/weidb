@@ -26,25 +26,41 @@ import org.apache.commons.dbutils.handlers.MapListHandler;
 import org.apache.log4j.Logger;
 
 /**
- * 数据库存操作核心类,提供便捷的数据库操作方法.
+ * Core helper class to simplify jdbc operations. Depend on the apache dbutils libary.
  * 
  * @author wei
  * @since 2014-3-13
  */
 public class Session {
 
+	/** logger **/
 	private static final Logger log = Logger.getLogger(Session.class);
 
+	/** connection manager **/
 	private DBConnectionManager dbManager;
 
+	/** phisical connection **/
 	private Connection g_connection = null;
 
+	/** transaction falg, to check whether current thread is in transaction or not **/
 	private boolean isInTransaction = false;
 
+	/**
+	 * Create a new session, there is no live connection bind yet by default.<br>
+	 * Untill db operation occured, it request a connection and bind to current thread.
+	 */
 	public Session() {
 		dbManager = new DBConnectionManager();
 	}
 
+	/**
+	 * Create a new session, inject the specified connection, unlike default constructor, <br>
+	 * it will not bind thread local, and the life of this connection is managed by this <br>
+	 * Session. So it is uncessary to close this connection outside.
+	 * 
+	 * @param conn
+	 *            the given phisical connection
+	 */
 	public Session(Connection conn) {
 		dbManager = new DBConnectionManager();
 		g_connection = conn;
@@ -63,8 +79,7 @@ public class Session {
 	}
 
 	/**
-	 * Begin a transaction this will set autoCommit=true, wait for
-	 * {@link #commit} or {@link #rollback}<br>
+	 * Begin a transaction this will set autoCommit=true, wait for {@link #commit} or {@link #rollback}<br>
 	 * Caution: thread open an transaction must be end it.
 	 */
 	public void beginTransaction() {
@@ -112,7 +127,7 @@ public class Session {
 		MapHandler handler = new MapHandler();
 		try {
 			Map<String, Object> map = run.query(getConnection(), sql, handler);
-			log.debug("query sql=" + sql + ";map=" + map);
+			log.debug("sql=" + sql + ";map=" + map);
 			return map;
 		} catch (SQLException e) {
 			e.printStackTrace();
@@ -139,7 +154,7 @@ public class Session {
 		ResultSetHandler<T> handler = new BeanHandler<T>(clz);
 		try {
 			T bean = run.query(getConnection(), sql, handler);
-			log.debug("Query SQL:" + sql + ";bean=" + bean);
+			log.debug("sql:" + sql + ";bean=" + bean);
 			return bean;
 		} catch (SQLException e) {
 			e.printStackTrace();
@@ -168,7 +183,7 @@ public class Session {
 		ResultSetHandler<T> handler = new BeanHandler<T>(clz);
 		try {
 			T bean = run.query(getConnection(), sql, handler, params);
-			log.debug("Query SQL=" + sql + ";params=" + java.util.Arrays.toString(params) + ";bean=" + bean);
+			log.debug("sql=" + sql + ";params=" + java.util.Arrays.toString(params) + ";bean=" + bean);
 			return bean;
 		} catch (SQLException e) {
 			e.printStackTrace();
@@ -195,7 +210,7 @@ public class Session {
 		ResultSetHandler<List<T>> handler = new BeanListHandler<T>(clz);
 		try {
 			List<T> list = run.query(getConnection(), sql, handler);
-			log.debug("query sql=" + sql + ";listsize=" + list.size());
+			log.debug("sql=" + sql + ";listsize=" + list.size());
 			return list;
 		} catch (SQLException e) {
 			e.printStackTrace();
@@ -220,7 +235,7 @@ public class Session {
 		MapListHandler handler = new MapListHandler();
 		try {
 			List<Map<String, Object>> list = run.query(getConnection(), sql, handler);
-			log.debug("Query SQL=" + sql + ";listsize=" + list.size());
+			log.debug("sql=" + sql + ";listsize=" + list.size());
 			return list;
 		} catch (SQLException e) {
 			e.printStackTrace();
@@ -335,7 +350,7 @@ public class Session {
 			if (pstmt != null) {
 				pstmt.close();
 			}
-			log.debug("Update:" + res + "; SQL=" + sql + ";params=" + java.util.Arrays.toString(params) + ";");
+			log.debug("Update:" + res + "; sql=" + sql + ";params=" + java.util.Arrays.toString(params) + ";");
 		} catch (SQLException e) {
 			throw e;
 		} finally {
@@ -446,8 +461,7 @@ public class Session {
 	}
 
 	/**
-	 * Get primary key for data base table via
-	 * <code>@TablePrimaryKeyAnnotation</code>.
+	 * Get primary key for data base table via <code>@TablePrimaryKeyAnnotation</code>.
 	 * 
 	 * @param bean
 	 *            java bean object
@@ -457,7 +471,7 @@ public class Session {
 		String res = null;
 		Table annotation = clz.getAnnotation(Table.class);
 		if (annotation != null) {
-			res = annotation.key().equals("") ? clz.getSimpleName() : annotation.key();
+			res = annotation.key();
 		}
 		if (res == null || res.length() < 1) {
 			throw new RuntimeException("Table name must be set in the entity class.");
@@ -509,7 +523,8 @@ public class Session {
 	public synchronized long AIinsert(Object bean) throws SQLException {
 		if (!insert(bean))
 			return -1;
-		return getLong("SELECT (AUTO_INCREMENT-1)as id FROM information_schema.tables  WHERE table_name='" + getTableName(bean.getClass()) + "'");
+		return getLong("SELECT (AUTO_INCREMENT-1)as id FROM information_schema.tables  WHERE table_name='"
+				+ getTableName(bean.getClass()) + "'");
 	}
 
 	/**
@@ -567,10 +582,7 @@ public class Session {
 	public void hugeQuery(String sql, QueryExecutor executor) {
 		Connection conn = dbManager.newConnection();
 		try {
-			PreparedStatement pst = conn.prepareStatement(
-					sql,
-					ResultSet.TYPE_FORWARD_ONLY,
-					ResultSet.CONCUR_READ_ONLY);
+			PreparedStatement pst = conn.prepareStatement(sql, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
 			pst.setFetchSize(Integer.MIN_VALUE);
 			ResultSet rs = pst.executeQuery();
 			executor.result(rs);
