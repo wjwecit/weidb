@@ -135,7 +135,6 @@ public class Session {
 	 *         empty, it is null.
 	 */
 	public <T> T getBean(Class<T> clz, String sql) {
-
 		QueryRunner run = new QueryRunner();
 		ResultSetHandler<T> handler = new BeanHandler<T>(clz);
 		try {
@@ -507,7 +506,7 @@ public class Session {
 	 * @throws SQLException
 	 *             throw SQLException if any.
 	 */
-	public long AIinsert(Object bean) throws SQLException {
+	public synchronized long AIinsert(Object bean) throws SQLException {
 		if (!insert(bean))
 			return -1;
 		return getLong("SELECT (AUTO_INCREMENT-1)as id FROM information_schema.tables  WHERE table_name='" + getTableName(bean.getClass()) + "'");
