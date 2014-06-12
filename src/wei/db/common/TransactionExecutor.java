@@ -16,6 +16,6 @@ public interface TransactionExecutor {
 	 * 开始执行事务体
 	 * @throws SQLException
 	 */
-	public void execute(Session session) throws SQLException;
+	public void execute() throws SQLException;
 
 }

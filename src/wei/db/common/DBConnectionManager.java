@@ -13,35 +13,33 @@ import org.apache.log4j.Logger;
 import com.mchange.v2.c3p0.ComboPooledDataSource;
 
 /**
- * 
- * @author wei 2014-03-21
+ * @author wei
  * 
  */
 public class DBConnectionManager {
 
 	private static final Logger log = Logger.getLogger(DBConnectionManager.class);
-	/** mysql type DB, value is {@value} **/
+	/** mysql类型DB, 值为{@value} **/
 	public static final int DB_TYPE_MYSQL = 0x1;
 
-	/** oracle type DB, value is{@value} **/
+	/** oracle类型DB, 值为{@value} **/
 	public static final int DB_TYPE_ORACLE = 0x2;
 
-	/** default datasource **/
 	private static DataSource dataSource;
 
-	/** the type of data base, can be {@link #DB_TYPE_MYSQL}or {@link #DB_TYPE_ORACLE} **/
+	/** 数据库类型, 可以是{@link #DB_TYPE_MYSQL}和{@link #DB_TYPE_ORACLE} **/
 	public static int dbType;
 
 	private volatile static boolean isInit = false;
 
-	/** threadlocal to bind Connection **/
-	private ThreadLocal<Connection> threadSession = new ThreadLocal<Connection>();
+	/** 用来把Connection绑定到当前线程上的变量 **/
+	private static ThreadLocal<Connection> threadSession = new ThreadLocal<Connection>();
 
 	static {
 		try {
 			initConnPool();
 		} catch (Exception e) {
-			log.error("Can not init connection pool," + e);
+			log.error("Can not init connection pool," + e.getLocalizedMessage());
 			e.printStackTrace();
 		}
 	}
@@ -50,10 +48,10 @@ public class DBConnectionManager {
 		ComboPooledDataSource cpds = new ComboPooledDataSource("defaultdb");
 		dataSource = cpds;
 		isInit = true;
-		String dbClass = cpds.getDriverClass().toLowerCase();
-		if (dbClass.contains("mysql")) {
+		String dbClass = cpds.getDriverClass();
+		if (dbClass.matches(".*\\.mysql\\..*")) {
 			dbType = DB_TYPE_MYSQL;
-		} else if (dbClass.contains("oracle")) {
+		} else if (dbClass.matches(".*\\.oracle\\..*")) {
 			dbType = DB_TYPE_ORACLE;
 		} else {
 			dbType = 0;
@@ -69,25 +67,20 @@ public class DBConnectionManager {
 	}
 
 	/**
-	 * Get connection from threadlocal firstly, if not exists, fetch new from poool.
+	 * 根据数据库的默认连接参数获取数据库的Connection对象，并绑定到当前线程上
 	 * 
-	 * @return a live connection if success,else null.
+	 * @return 成功，返回Connection对象，否则返回null
 	 */
 	public synchronized Connection getConnection() {
-
-		/* try get it from threadlocal */
-		Connection conn = threadSession.get();
+		Connection conn = threadSession.get(); // 先从当前线程上取出连接实例
 		try {
-			/* fetch new one form pool if no connection avaliable */
-			if (null == conn || conn.isClosed()) {
+			if (null == conn || conn.isClosed()) { // 如果当前线程上没有Connection的实例
 				if (!isInit) {
 					initConnPool();
 				}
 				if (dataSource != null) {
-					conn = dataSource.getConnection();
-
-					/* bin it to threadlocal */
-					threadSession.set(conn);
+					conn = dataSource.getConnection(); // 从连接池中取出一个连接实例
+					threadSession.set(conn); // 把它绑定到当前线程上
 				} else {
 					log.error("Connection can not fetch from datasource!");
 				}
@@ -100,21 +93,31 @@ public class DBConnectionManager {
 	}
 
 	/**
-	 * Always fetch a new connection from the pool, no matter there is any live one attatched threadlocal.
+	 * 从当前线程中获得事先已经绑定成功的Connection对象.
 	 * 
-	 * @return a new phisical connection.
+	 * @return 成功，返回Connection对象，否则null
 	 */
-	public Connection openNewConnection() {
+	public synchronized Connection localConnection() {
+		return threadSession.get();
+	}
+
+	/**
+	 * 根据数据库的默认连接参数获取数据库的Connection对象，并绑定到当前线程上
+	 * 
+	 * @return 成功，返回Connection对象，否则返回null
+	 */
+	public synchronized Connection newConnection() {
 		Connection conn = null;
 		try {
 			if (!isInit) {
 				initConnPool();
 			}
 			if (dataSource != null) {
-				conn = dataSource.getConnection();
+				conn = dataSource.getConnection(); // 从连接池中取出一个连接实例
 			} else {
 				log.error("Connection can not fetch from datasource!");
 			}
+
 		} catch (SQLException e) {
 			e.printStackTrace();
 		}
@@ -122,26 +125,42 @@ public class DBConnectionManager {
 	}
 
 	/**
-	 * close connection binded to this threadlocal, if there is no connection bined yet, nothing will done.
+	 * 关闭session中已保存的数据库连接,如果当前线程中无connection则做Nothing.
 	 */
 	public void close() {
 		close(threadSession.get());
 	}
 
 	/**
-	 * close the connection specified.
+	 * 关闭连接并释放session
 	 * 
 	 * @param conn
-	 *            the connection to be closed
-	 * 
+	 *            关闭指定的连接
 	 */
-	protected void close(Connection conn) {
+	public void close(Connection conn) {
 		if (conn != null) {
 			try {
 				conn.close();
 			} catch (SQLException e) {
-				log.error("Close phisical connection error.", e);
+				log.error("关闭连接时出现异常", e);
+			} finally {
+				/** 卸装线程绑定 **/
+				threadSession.remove();
 			}
+		}
+	}
+
+	/**
+	 * 回滚操作
+	 * 
+	 * @param conn
+	 *            连接
+	 */
+	public void rollback(Connection conn) {
+		try {
+			conn.rollback();
+		} catch (SQLException e) {
+			e.printStackTrace();
 		}
 	}
 

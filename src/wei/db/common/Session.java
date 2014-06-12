@@ -4,14 +4,13 @@
 package wei.db.common;
 
 import java.beans.BeanInfo;
-import java.beans.IntrospectionException;
 import java.beans.Introspector;
 import java.beans.PropertyDescriptor;
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.sql.Connection;
 import java.sql.ParameterMetaData;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -26,15 +25,10 @@ import org.apache.commons.dbutils.handlers.MapHandler;
 import org.apache.commons.dbutils.handlers.MapListHandler;
 import org.apache.log4j.Logger;
 
-import wei.db.annotation.TableAIKeyAnnotation;
-import wei.db.annotation.TableColumnAnnotation;
-import wei.db.annotation.TableNameAnnotation;
-import wei.db.annotation.TablePrimaryKeyAnnotation;
-
 /**
- * 数据库核心操作类, 依赖近似原生态的jdbc处理方式完成数据操作。
+ * 数据库存操作核心类,提供便捷的数据库操作方法.
  * 
- * @author Qin-Wei
+ * @author wei
  * @since 2014-3-13
  */
 public class Session {
@@ -89,15 +83,15 @@ public class Session {
 	 * 配合{@link #beginTransaction()}进行使用,提交事务并关闭连接
 	 */
 	public void commit() {
-		dbManager.rollbackAndClose(g_connection);
+		dbManager.commitAndClose(g_connection);
 		isInTransaction = false;
 	}
 
 	/**
 	 * 配合{@link #beginTransaction()}进行使用,回滚事务并关闭连接
 	 */
-	public void rollbackcommit() {
-		dbManager.commitAndClose(g_connection);
+	public void rollback() {
+		dbManager.rollbackAndClose(g_connection);
 		isInTransaction = false;
 	}
 
@@ -276,7 +270,7 @@ public class Session {
 	 *             如果在执行中有SQL异常发生,则抛出.
 	 */
 	public int update(Object bean) throws SQLException {
-		return update(bean, getTablePrimaryKey(bean));
+		return update(bean, getTablePrimaryKey(bean.getClass()));
 	}
 
 	/**
@@ -426,24 +420,11 @@ public class Session {
 		HashMap<String, Object> beanMap = new HashMap<String, Object>();
 
 		Class<? extends Object> clz = bean.getClass();
-		TableNameAnnotation tableAnnotation = clz.getDeclaredAnnotation(TableNameAnnotation.class);
+		Table tableAnnotation = clz.getAnnotation(Table.class);
 		if (tableAnnotation == null) {
 			throw new RuntimeException("Table name must be set in the entity class.");
 		}
-
 		try {
-			if (tableAnnotation.autoMap()) {
-				Field[] fields = bean.getClass().getDeclaredFields();
-				for (Field field : fields) {
-					field.setAccessible(true);
-					Object value = field.get(bean);
-					if (value != null && !value.equals(getInitialVlue(value))) {
-						beanMap.put(getTableColumn(bean, field.getName()), value);
-					}
-				}
-				return beanMap;
-			}
-
 			BeanInfo info = Introspector.getBeanInfo(bean.getClass());
 			PropertyDescriptor[] descritors = info.getPropertyDescriptors();
 			int size = descritors.length;
@@ -458,7 +439,7 @@ public class Session {
 					if (value == null || value.equals(getInitialVlue(value))) {
 						continue;
 					}
-					beanMap.put(getTableColumn(bean, propertyName), value);
+					beanMap.put(propertyName, value);
 				}
 			}
 		} catch (Exception e) {
@@ -478,7 +459,7 @@ public class Session {
 
 	public static String getTableName(Class<?> clz) {
 		String res = null;
-		TableNameAnnotation annotation = clz.getDeclaredAnnotation(TableNameAnnotation.class);
+		Table annotation = clz.getAnnotation(Table.class);
 		if (annotation != null) {
 			res = annotation.name().equals("") ? clz.getSimpleName() : annotation.name();
 		}
@@ -495,97 +476,14 @@ public class Session {
 	 *            实体
 	 * @return 字串格式的主键字段名
 	 */
-	public static String getTablePrimaryKey(Object bean) {
+	public static String getTablePrimaryKey(Class<?> clz) {
 		String res = null;
-		try {
-			Field[] fields = bean.getClass().getDeclaredFields();
-			for (Field field : fields) {
-				TablePrimaryKeyAnnotation annotation = field.getAnnotation(TablePrimaryKeyAnnotation.class);
-				if (annotation != null) {
-					PropertyDescriptor properDescriptor = new PropertyDescriptor(field.getName(), bean.getClass());
-					Method getter = properDescriptor.getReadMethod();
-					if (getter != null) {
-						TableColumnAnnotation annotation2 = field.getAnnotation(TableColumnAnnotation.class);
-						res = annotation2.columnName().equals("") ? field.getName() : annotation2.columnName();
-						return res;
-					}
-				}
-			}
-		} catch (IntrospectionException e) {
-			e.printStackTrace();
+		Table annotation = clz.getAnnotation(Table.class);
+		if (annotation != null) {
+			res = annotation.key().equals("") ? clz.getSimpleName() : annotation.key();
 		}
 		if (res == null || res.length() < 1) {
-			throw new RuntimeException("Key must be set in the entity class.");
-		}
-		return res;
-	}
-
-	/**
-	 * Get auto incrace key for the mapped data table where marked <code>@TableAIKeyAnnotation</code>
-	 * 
-	 * @param bean
-	 *            the bean to be mapped
-	 */
-	public static String getTableAIKey(Object bean) {
-		if (getTableName(bean.getClass()) == null) {
-			throw new RuntimeException("Table name must be set in the entity class:" + bean.getClass());
-		}
-		String res = null;
-		try {
-			Field[] fields = bean.getClass().getDeclaredFields();
-			for (Field field : fields) {
-				TableAIKeyAnnotation annotation = field.getAnnotation(TableAIKeyAnnotation.class);
-				if (annotation != null) {
-					PropertyDescriptor properDescriptor = new PropertyDescriptor(field.getName(), bean.getClass());
-					Method getter = properDescriptor.getReadMethod();
-					if (getter != null) {
-						TableColumnAnnotation annotation2 = field.getAnnotation(TableColumnAnnotation.class);
-						res = annotation2.columnName().equals("") ? field.getName() : annotation2.columnName();
-						return res;
-					}
-				}
-			}
-		} catch (IntrospectionException e) {
-			e.printStackTrace();
-		}
-		return res;
-	}
-
-	/**
-	 * Get the column name corresponding to the mapped bean. If there is no comumn mapped to this bean
-	 * property, an runtime exception will be thrown.
-	 * 
-	 * @param bean
-	 *            the mapped bean
-	 * @param property
-	 *            the property in the bean
-	 * @return the column of the data table
-	 */
-	public static String getTableColumn(Object bean, String property) {
-		String res = null;
-		try {
-			Field[] fields = bean.getClass().getDeclaredFields();
-			for (Field field : fields) {
-				if (!field.getName().equalsIgnoreCase(property)) {
-					continue;
-				}
-				TableColumnAnnotation annotation = field.getAnnotation(TableColumnAnnotation.class);
-				if (annotation != null) {
-					PropertyDescriptor properDescriptor = new PropertyDescriptor(field.getName(), bean.getClass());
-					Method getter = properDescriptor.getReadMethod();
-					if (getter != null) {
-						res = annotation.columnName().equals("") ? field.getName() : annotation.columnName();
-						return res;
-					}
-				} else {
-					return field.getName();
-				}
-			}
-		} catch (IntrospectionException e) {
-			e.printStackTrace();
-		}
-		if (res == null || res.length() < 1) {
-			throw new RuntimeException("Comumn annotation must be set in the entity class:" + bean.getClass());
+			throw new RuntimeException("Table name must be set in the entity class.");
 		}
 		return res;
 	}
@@ -621,4 +519,93 @@ public class Session {
 		}
 		return null;
 	}
-}
+	
+	/**
+	 * 执行插入操作. 必须在bean中添加主键注解<code>@TableKey</code>.
+	 * 
+	 * @param bean
+	 *            被操作的实体bean.
+	 * @return 操作是否成功.
+	 * @throws SQLException
+	 *             如果在执行中有SQL异常发生,则抛出.
+	 */
+	public synchronized long AIinsert(Object bean) throws SQLException {
+		if (!insert(bean))
+			return -1;
+		return getLong("SELECT (AUTO_INCREMENT-1)as id FROM information_schema.tables  WHERE table_name='" + getTableName(bean.getClass()) + "'");
+	}
+	
+	/**
+	 * 带点位符格式得到结果集中第一行第一列的Long类数据. 多余的数据将被忽略.
+	 * 
+	 * @param sql
+	 *            SQL语句,可以是带?的点位符
+	 * @param params
+	 *            参数列表
+	 * @return 长整型结果
+	 */
+	public long getLong(String sql, Object[] params) {
+		Connection conn = getConnection();
+		try {
+			PreparedStatement pstmt = conn.prepareStatement(sql);
+			fillStatement(pstmt, params);
+			ResultSet rs = pstmt.executeQuery();
+			if (rs.next()) {
+				return rs.getLong(1);
+			}
+		} catch (SQLException e) {
+			e.printStackTrace();
+		} finally {
+			if (!isInTransaction) {
+				dbManager.close();
+			}
+		}
+		return 0L;
+	}
+	
+	
+	
+	
+	/**
+	 * 得到结果集中第一行第一列的Long类数据. 多余的数据将被忽略.
+	 * 
+	 * @param sql
+	 *            SQL语句
+	 * @return 长整型结果
+	 */
+	public long getLong(String sql) {
+		return getLong(sql, null);
+	}
+
+
+	/**
+	 * 海量数据遍历结果集时专用方法. 使用此方法时,记录集将按需要读取,不再是一次性全部装入内存.<br>
+	 * 程序中应将数据集较大的优先使用本方法,从而避免OOM异常出现.
+	 * 
+	 * @param sql
+	 *            执行的SQL
+	 * @param executor
+	 *            查询处理器接口,实现此接口,用以结果集的处理.
+	 */
+	public void hugeQuery(String sql, QueryExecutor executor) {
+		Connection conn =dbManager.newConnection();
+		try {
+			PreparedStatement pst = conn.prepareStatement(
+					sql,
+					ResultSet.TYPE_FORWARD_ONLY,
+					ResultSet.CONCUR_READ_ONLY);
+			pst.setFetchSize(Integer.MIN_VALUE);
+			ResultSet rs = pst.executeQuery();
+			executor.result(rs);
+		} catch (Exception e) {
+			try {
+				e.printStackTrace();
+				executor.exception();
+			} catch (Exception e1) {
+				e1.printStackTrace();
+			}
+		} finally {
+			executor.after();
+			dbManager.close(conn);
+		}
+	}}
