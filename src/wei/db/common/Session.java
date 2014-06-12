@@ -488,7 +488,7 @@ public class Session {
 	 */
 	public static Object getInitialVlue(Object obj) {
 		if (obj == null) {
-			return obj;
+			return null;
 		}
 		Class<? extends Object> type = obj.getClass();
 		if (type == Boolean.TYPE || type == Boolean.class)
@@ -516,7 +516,7 @@ public class Session {
 	 * 
 	 * @param bean
 	 *            java bean.
-	 * @return the AI value
+	 * @return the AI value, if insert failed, return -1.
 	 * @throws SQLException
 	 *             throw SQLException if any.
 	 */
