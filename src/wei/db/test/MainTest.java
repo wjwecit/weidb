@@ -3,6 +3,8 @@
  */
 package wei.db.test;
 
+import java.util.List;
+
 import wei.db.common.Session;
 
 /**
@@ -18,17 +20,18 @@ public class MainTest {
 		Session session = new Session();
 		AreaChina local = new AreaChina();
 		local.setAreaCode(990);
-		//local.setAreaCodeDeprecated(991);
+		// local.setAreaCodeDeprecated(991);
 		local.setAreaName("лан╡");
 
 		try {
-			//String p1 = BeanUtils.getSimpleProperty(local, "areaCode");
-			//System.out.println(p1);
-
-			session.executeUpdate("delete from areachina where areacode=?", new Object[] {990});
+			session.executeUpdate("delete from areachina where areacode=?", new Object[] { 990 });
 			if (session.insert(local)) {
 				session.getMap("select * from areachina where areacode=990");
-				session.getBeanList(AreaChina.class, "select * from areachina limit 5");
+				List<AreaChina> beanList = session.getBeanList(AreaChina.class,
+						"select * from areachina where areacode like '110%'");
+				for (AreaChina areaChina : beanList) {
+					System.out.println(areaChina);
+				}
 			}
 		} catch (Exception e) {
 			e.printStackTrace();
