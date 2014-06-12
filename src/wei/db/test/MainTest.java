@@ -3,8 +3,6 @@
  */
 package wei.db.test;
 
-import org.apache.commons.beanutils.BeanUtils;
-
 import wei.db.common.Session;
 
 /**

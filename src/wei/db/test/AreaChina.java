@@ -1,20 +1,14 @@
 package wei.db.test;
 
-import wei.db.annotation.TableColumnAnnotation;
-import wei.db.annotation.TableNameAnnotation;
-import wei.db.annotation.TablePrimaryKeyAnnotation;
+import wei.db.common.Table;
 
-@TableNameAnnotation(name = "areachina", autoMap = true)
+@Table(name = "areachina", key = "id")
 public class AreaChina {
 
-	@TablePrimaryKeyAnnotation
-	@TableColumnAnnotation
 	private int areaCode;
 
-	@TableColumnAnnotation
 	private String areaName;
 
-	@TableColumnAnnotation
 	private int areaCodeDeprecated;
 
 	public int getAreaCode() {
