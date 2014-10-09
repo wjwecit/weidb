@@ -5,6 +5,7 @@ package wei.db.common;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.HashMap;
 
 import javax.sql.DataSource;
 
@@ -25,30 +26,27 @@ public class DBConnectionManager {
 	/** oracle类型DB, 值为{@value} **/
 	public static final int DB_TYPE_ORACLE = 0x2;
 
-	private static DataSource dataSource;
+	private static HashMap<String,ComboPooledDataSource> dataSourceMap=new HashMap<String,ComboPooledDataSource>();
 
 	/** 数据库类型, 可以是{@link #DB_TYPE_MYSQL}和{@link #DB_TYPE_ORACLE} **/
-	public static int dbType;
+	public int dbType;
 
-	private volatile static boolean isInit = false;
+	public String dbname = "defaultdb";
 
 	/** 用来把Connection绑定到当前线程上的变量 **/
-	private static ThreadLocal<Connection> threadSession = new ThreadLocal<Connection>();
+	private ThreadLocal<Connection> threadSession = new ThreadLocal<Connection>();
 
-	static {
-		try {
-			initConnPool();
-		} catch (Exception e) {
-			log.error("Can not init connection pool," + e.getLocalizedMessage());
-			e.printStackTrace();
-		}
+	private synchronized static void initConnPool(String dbname) {
+		ComboPooledDataSource ds = new ComboPooledDataSource(dbname);
+		dataSourceMap.put(dbname, ds);
+		log.info("Connection pool init successfully. " + ds.toString());
 	}
 
-	private synchronized static void initConnPool() {
-		ComboPooledDataSource cpds = new ComboPooledDataSource("defaultdb");
-		dataSource = cpds;
-		isInit = true;
-		String dbClass = cpds.getDriverClass();
+	public int getDbType() {
+		if(!dataSourceMap.containsKey(dbname)){
+			initConnPool(dbname);
+		}
+		String dbClass = dataSourceMap.get(dbname).getDriverClass();
 		if (dbClass.matches(".*\\.mysql\\..*")) {
 			dbType = DB_TYPE_MYSQL;
 		} else if (dbClass.matches(".*\\.oracle\\..*")) {
@@ -56,14 +54,14 @@ public class DBConnectionManager {
 		} else {
 			dbType = 0;
 		}
-		log.info("Connection pool init successfully. " + cpds.toString());
+		return dbType;
 	}
 
 	public DataSource getDataSource() {
-		if (!isInit) {
-			initConnPool();
+		if (!dataSourceMap.containsKey(dbname)) {
+			initConnPool(dbname);
 		}
-		return dataSource;
+		return dataSourceMap.get(dbname);
 	}
 
 	/**
@@ -72,19 +70,17 @@ public class DBConnectionManager {
 	 * @return 成功，返回Connection对象，否则返回null
 	 */
 	public synchronized Connection getConnection() {
-		Connection conn = threadSession.get(); // 先从当前线程上取出连接实例
+		// 先从当前线程上取出连接实例
+		Connection conn = threadSession.get();
 		try {
-			if (null == conn || conn.isClosed()) { // 如果当前线程上没有Connection的实例
-				if (!isInit) {
-					initConnPool();
-				}
-				if (dataSource != null) {
-					conn = dataSource.getConnection(); // 从连接池中取出一个连接实例
-					threadSession.set(conn); // 把它绑定到当前线程上
-				} else {
-					log.error("Connection can not fetch from datasource!");
-				}
-
+			// 当前线程上没有Connection的实例
+			if (null == conn || conn.isClosed()) {
+				DataSource dataSource=getDataSource();
+				// 从连接池中取出一个连接实例
+				conn = dataSource.getConnection();
+				// 把它绑定到当前线程上
+				threadSession.set(conn);
+				System.err.println(dbname);
 			}
 		} catch (SQLException e) {
 			e.printStackTrace();
@@ -109,15 +105,9 @@ public class DBConnectionManager {
 	public synchronized Connection newConnection() {
 		Connection conn = null;
 		try {
-			if (!isInit) {
-				initConnPool();
-			}
-			if (dataSource != null) {
-				conn = dataSource.getConnection(); // 从连接池中取出一个连接实例
-			} else {
-				log.error("Connection can not fetch from datasource!");
-			}
-
+			DataSource dataSource=getDataSource();
+			// 从连接池中取出一个连接实例
+			conn = dataSource.getConnection();
 		} catch (SQLException e) {
 			e.printStackTrace();
 		}

@@ -7,6 +7,7 @@ import java.beans.BeanInfo;
 import java.beans.Introspector;
 import java.beans.PropertyDescriptor;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.sql.Connection;
 import java.sql.ParameterMetaData;
 import java.sql.PreparedStatement;
@@ -26,71 +27,74 @@ import org.apache.commons.dbutils.handlers.MapListHandler;
 import org.apache.log4j.Logger;
 
 /**
- * Core helper class to simplify jdbc operations. Depend on the apache dbutils libary.
+ * Core helper class to simplify jdbc operations. Depend on the apache dbutils
+ * libary.
  * 
  * @author wei
  * @since 2014-3-13
  */
 public class Session {
 
-	/** logger **/
+	/** 日志对象 **/
 	private static final Logger log = Logger.getLogger(Session.class);
 
-	/** connection manager **/
+	/** 连接管理器 **/
 	private DBConnectionManager dbManager;
 
-	/** phisical connection **/
+	/** 内置的一个物理连接对象 **/
 	private Connection g_connection = null;
 
-	/** transaction falg, to check whether current thread is in transaction or not **/
+	/** 事务开启标识 **/
 	private boolean isInTransaction = false;
-
+	
 	/**
-	 * Create a new session, there is no live connection bind yet by default.<br>
-	 * Untill db operation occured, it request a connection and bind to current thread.
+	 * 创建一个新的会话,内置的连接不会马上开启,直到发生一个数据库操作.
 	 */
 	public Session() {
 		dbManager = new DBConnectionManager();
 	}
 
 	/**
-	 * Create a new session, inject the specified connection, unlike default constructor, <br>
-	 * it will not bind thread local, and the life of this connection is managed by this <br>
-	 * Session. So it is uncessary to close this connection outside.
+	 * 使用给定的连接对象创建一个新的会话,内置的连接不会马上开启,直到发生一个数据库操作.
 	 * 
 	 * @param conn
-	 *            the given phisical connection
+	 *           给定的物理连接
 	 */
-	public Session(Connection conn) {
+	public Session(String dbname) {
 		dbManager = new DBConnectionManager();
-		g_connection = conn;
+		dbManager.dbname=dbname;
 	}
 
 	/**
-	 * Fetch a phisical sql connection from current thread.
-	 * 
-	 * @return Connection object
+	 * 检查并更新连接
 	 */
-	public Connection getConnection() {
+	public void reConnect() {
 		if (g_connection == null) {
 			g_connection = dbManager.getConnection();
 		}
-		return g_connection;
 	}
 
 	/**
-	 * Begin a transaction this will set autoCommit=true, wait for {@link #commit} or {@link #rollback}<br>
-	 * Caution: thread open an transaction must be end it.
+	 * 如果没有关联的事务,则释放连接资源;如果有事务,则什么都不做.
+	 */
+	private void checkClose() {
+		if (g_connection != null && !isInTransaction) {
+			dbManager.close(g_connection);
+			g_connection = null;
+		}
+	}
+
+	/**
+	 * 显式开始一个事务,之后的代码必须显式提交或者回滚来结束事务, 否则将会导致连接泄漏问题.
 	 */
 	public void beginTransaction() {
 		if (isInTransaction) {
+			rollback();
 			throw new IllegalAccessError("Thread :" + Thread.currentThread().getName()
 					+ " had already in transaction, must end it first!");
 		}
 		try {
-			if (g_connection == null || g_connection.isClosed()) {
-				g_connection = dbManager.getConnection();
-			}
+			reConnect();
 			g_connection.setAutoCommit(false);
 			isInTransaction = true;
 		} catch (SQLException e) {
@@ -99,169 +103,199 @@ public class Session {
 	}
 
 	/**
-	 * Commit and close phisical connection.
+	 * 提交事务并释放连接资源.
 	 */
 	public void commit() {
 		dbManager.commitAndClose(g_connection);
 		isInTransaction = false;
+		g_connection = null;
 	}
 
 	/**
-	 * Rollback and close phisical connection.
+	 * 回滚事务并释放连接资源.
 	 */
 	public void rollback() {
 		dbManager.rollbackAndClose(g_connection);
 		isInTransaction = false;
+		g_connection = null;
 	}
 
 	/**
-	 * Mapping resultset into HashMap object.
+	 * 将结果记录集映射到Map,不用注解.
 	 * 
 	 * @param sql
-	 *            sql statement
-	 * @return mapped hashmap if the resultset is not empty, if result is empty,
-	 *         it is null.
+	 *            SQL语句
+	 * @return 如果映射成功,返回Map,否则返回null;
 	 */
 	public Map<String, Object> getMap(String sql) {
 		QueryRunner run = new QueryRunner();
 		MapHandler handler = new MapHandler();
 		try {
-			Map<String, Object> map = run.query(getConnection(), sql, handler);
+			reConnect();
+			Map<String, Object> map = run.query(g_connection, sql, handler);
 			log.debug("sql=" + sql + ";map=" + map);
 			return map;
 		} catch (SQLException e) {
 			e.printStackTrace();
 		} finally {
-			if (g_connection == null && !isInTransaction) {
-				dbManager.close(g_connection);
-			}
+			checkClose();
 		}
 		return null;
 	}
 
 	/**
-	 * Mapping resultset into java bean object.
+	 * 将结果记录集映射到javabean,不用注解.
 	 * 
 	 * @param clz
-	 *            class for java bean
+	 *            javabean 类属性
 	 * @param sql
-	 *            sql statement
-	 * @return mapped java bean if the resultset is not empty, if result is
-	 *         empty, it is null.
+	 *            SQL语句
+	 * @return 如果映射成功,返回javabean,否则返回null;
 	 */
 	public <T> T getBean(Class<T> clz, String sql) {
 		QueryRunner run = new QueryRunner();
 		ResultSetHandler<T> handler = new BeanHandler<T>(clz);
 		try {
-			T bean = run.query(getConnection(), sql, handler);
+			reConnect();
+			T bean = run.query(g_connection, sql, handler);
 			log.debug("sql:" + sql + ";bean=" + bean);
 			return bean;
 		} catch (SQLException e) {
 			e.printStackTrace();
 		} finally {
-			if (g_connection == null && !isInTransaction) {
-				dbManager.close(g_connection);
-			}
+			checkClose();
 		}
 		return null;
 	}
 
 	/**
-	 * Mapping resultset into java bean object.
+	 * 将结果记录集映射到javabean,不用注解.
 	 * 
 	 * @param clz
-	 *            class for java bean
+	 *            javabean 类属性
 	 * @param sql
-	 *            sql statement
+	 *            SQL语句
 	 * @param params
-	 *            sql statement parameter array
-	 * @return mapped java bean if the resultset is not empty, if result is
-	 *         empty, it is null.
+	 *            SQL参数数组
+	 * @return 如果映射成功,返回javabean,否则返回null;
 	 */
 	public <T> T getBean(Class<T> clz, String sql, Object[] params) {
 		QueryRunner run = new QueryRunner();
 		ResultSetHandler<T> handler = new BeanHandler<T>(clz);
 		try {
-			T bean = run.query(getConnection(), sql, handler, params);
+			reConnect();
+			T bean = run.query(g_connection, sql, handler, params);
 			log.debug("sql=" + sql + ";params=" + java.util.Arrays.toString(params) + ";bean=" + bean);
 			return bean;
 		} catch (SQLException e) {
 			e.printStackTrace();
 		} finally {
-			if (g_connection == null && !isInTransaction) {
-				dbManager.close(g_connection);
-			}
+			checkClose();
 		}
 		return null;
 	}
 
 	/**
-	 * Mapping resultset into java bean list.
+	 * 将结果记录集映射到javabean列表. 此方法必须先使用注解将javabean映射到数据表.
 	 * 
-	 * @param clz
-	 *            class for java bean
 	 * @param sql
-	 *            sql statement
-	 * @return mapped java bean list if the resultset is not empty, if result is
-	 *         empty, it is null.
+	 *            SQL语句
+	 * @return 如果映射成功,返回javabean的列表,否则返回null;
 	 */
 	public <T> List<T> getBeanList(Class<T> clz, String sql) {
 		QueryRunner run = new QueryRunner();
 		ResultSetHandler<List<T>> handler = new BeanListHandler<T>(clz);
 		try {
-			List<T> list = run.query(getConnection(), sql, handler);
+			reConnect();
+			List<T> list = run.query(g_connection, sql, handler);
 			log.debug("sql=" + sql + ";listsize=" + list.size());
 			return list;
 		} catch (SQLException e) {
 			e.printStackTrace();
 		} finally {
-			if (g_connection == null && !isInTransaction) {
-				dbManager.close(g_connection);
-			}
+			checkClose();
 		}
 		return null;
 	}
 
 	/**
-	 * Mapping resultset into HashMap list.
+	 * 将结果记录集映射到Map列表. 此方法适合于,结果集的数据过于复杂,或者不打算进行注解映射时使用.
 	 * 
 	 * @param sql
-	 *            sql statement
-	 * @return mapped HashMap list if the resultset is not empty, if result is
-	 *         empty, it is null.
+	 *            SQL语句
+	 * @return 如果映射成功,返回HashMap的列表,否则返回null;
 	 */
 	public List<Map<String, Object>> getMapList(String sql) {
 		QueryRunner run = new QueryRunner();
 		MapListHandler handler = new MapListHandler();
 		try {
-			List<Map<String, Object>> list = run.query(getConnection(), sql, handler);
+			reConnect();
+			List<Map<String, Object>> list = run.query(g_connection, sql, handler);
 			log.debug("sql=" + sql + ";listsize=" + list.size());
 			return list;
 		} catch (SQLException e) {
 			e.printStackTrace();
 		} finally {
-			if (g_connection == null && !isInTransaction) {
-				dbManager.close(g_connection);
-			}
+			checkClose();
 		}
 		return null;
 	}
 
 	/**
-	 * Update operation for mapped java bean.
+	 * Fetch long value for first line first column in the resultset.
+	 * 
+	 * @param sql
+	 *            sql statement
+	 * @return long value, if there is no such a result or there is any error
+	 *         return 0L.
+	 */
+	public long getLong(String sql) {
+		return getLong(sql, null);
+	}
+
+	/**
+	 * Fetch long value for first line first column in the resultset.
+	 * 
+	 * @param sql
+	 *            sql statement with spaceholders '?'
+	 * @param params
+	 *            parameter array
+	 * @return long value, if there is no such a result or there is any error
+	 *         return 0L.
+	 */
+	public long getLong(String sql, Object[] params) {
+		try {
+			reConnect();
+			PreparedStatement pstmt = g_connection.prepareStatement(sql);
+			fillStatement(pstmt, params);
+			ResultSet rs = pstmt.executeQuery();
+			if (rs.next()) {
+				return rs.getLong(1);
+			}
+		} catch (SQLException e) {
+			e.printStackTrace();
+		} finally {
+			checkClose();
+		}
+		return 0L;
+	}
+
+	/**
+	 * 使用javabean 作为参数进行方便的更新操作. javabean 必须提前使用Table注解作好映射.
 	 * 
 	 * @param bean
 	 *            java bean.
 	 * @param key
-	 *            primary key for data base table
-	 * @return effected rows count
-	 * @throws SQLException
-	 *             throw SQLException if any.
+	 *            主键
+	 * @return 受影响的行数
+	 * @throws Exception
+	 *             发生错误时抛出
+	 * 
 	 */
-	public int update(Object bean, String key) throws SQLException {
-		String tablename = bean.getClass().getSimpleName().toLowerCase();
+	public int update(Object bean, String key) throws Exception {
+		String tablename = getTableName(bean.getClass());
 		StringBuilder update = new StringBuilder("update " + tablename + " set ");
-		Map<String, Object> props = getTableMapFromBean(bean);
+		Map<String, Object> props = orm(bean);
 		ArrayList<Object> values = new ArrayList<Object>();
 		Object keyValue = null;
 		for (Map.Entry<String, Object> e : props.entrySet()) {
@@ -283,16 +317,15 @@ public class Session {
 	}
 
 	/**
-	 * Update operation for mapped java bean. The primary key should be
-	 * annotation via<code>@Table</code>.
+	 * 更新一个实体对象,必须提前使用注解进行映射.
 	 * 
 	 * @param bean
-	 *            java bean.
-	 * @return effected rows count
-	 * @throws SQLException
-	 *             throw SQLException if any.
+	 *            实体javabean.
+	 * @return 受影响行数
+	 * @throws Exception
+	 *             如果发生错误
 	 */
-	public int update(Object bean) throws SQLException {
+	public int update(Object bean) throws Exception {
 		return update(bean, getTablePrimaryKey(bean.getClass()));
 	}
 
@@ -303,14 +336,14 @@ public class Session {
 	 * @param bean
 	 *            被操作的实体bean.
 	 * @return 操作是否成功.
-	 * @throws SQLException
-	 *             如果在执行中有SQL异常发生,则抛出.
+	 * @throws Exception
+	 *             如果在执行中有任何异常发生,则抛出.
 	 */
-	public boolean insert(Object bean) throws SQLException {
+	public boolean insert(Object bean) throws Exception {
 		String tablename = getTableName(bean.getClass());
 		StringBuilder sqlk = new StringBuilder("insert into " + tablename + "(");
 		StringBuilder sqlv = new StringBuilder("values(");
-		Map<String, Object> props = getTableMapFromBean(bean);
+		Map<String, Object> props = orm(bean);
 		ArrayList<Object> values = new ArrayList<Object>();
 		for (Map.Entry<String, Object> e : props.entrySet()) {
 			sqlk.append(e.getKey() + ",");
@@ -329,22 +362,38 @@ public class Session {
 	}
 
 	/**
-	 * Take '?' placeholder to execute DML SQL statement(update, insert,
-	 * delete).
+	 * 主键为自增长字段时,insert操作后若想返回键值,可以使用本方法.
+	 * 
+	 * @param bean
+	 *            java bean.
+	 * @return 操作成功时返回本次自增长值, 否则返回-1.
+	 * @throws Exception
+	 *             如果在执行中有任何异常发生,则抛出.
+	 */
+	public synchronized long getAIinsertId(Object bean) throws Exception {
+		if (!insert(bean))
+			return -1;
+		String sql = "SELECT (AUTO_INCREMENT-1)as id FROM information_schema.tables  WHERE table_name='";
+		sql = sql + getTableName(bean.getClass()) + "'";
+		return getLong(sql);
+	}
+
+	/**
+	 * 使用?点位符执行DML insert/update/delete语句.
 	 * 
 	 * @param sql
-	 *            the SQL statement.
+	 *            SQL语句
 	 * @param params
-	 *            the parameters array
-	 * @return how many rows effected
-	 * @throws SQLException
-	 *             if there is any SQLException, popup it.
+	 *            SQL参数数组
+	 * @return 受影响行数
+	 * @throws Exception
+	 *             如果发生错误
 	 */
-	public int executeUpdate(String sql, Object[] params) throws SQLException {
+	public int executeUpdate(String sql, Object[] params) throws Exception {
 		int res = 0;
-		Connection conn = getConnection();
+		reConnect();
 		try {
-			PreparedStatement pstmt = conn.prepareStatement(sql);
+			PreparedStatement pstmt = g_connection.prepareStatement(sql);
 			fillStatement(pstmt, params);
 			res = pstmt.executeUpdate();
 			if (pstmt != null) {
@@ -354,22 +403,20 @@ public class Session {
 		} catch (SQLException e) {
 			throw e;
 		} finally {
-			if (g_connection == null && !isInTransaction) {
-				dbManager.close(g_connection);
-			}
+			checkClose();
 		}
 		return res;
 	}
 
 	/**
-	 * Inject into PreaparedStatement with parameter array, with replaceholder.
+	 * 将PreparedStatement中的参数点位符进行填充.
 	 * 
 	 * @param pstmt
-	 *            PreaparedStatement statement
+	 *            PreaparedStatement
 	 * @param params
-	 *            parameter array
+	 *            参数数组
 	 * @throws SQLException
-	 *             throw SQLException if any.
+	 *             如果发生SQL错误
 	 */
 	private static void fillStatement(PreparedStatement pstmt, Object[] params) throws SQLException {
 		ParameterMetaData pmd = null;
@@ -406,9 +453,8 @@ public class Session {
 	 *            the bean to be maped
 	 * @return the maped java bean
 	 */
-	public static Map<String, Object> getTableMapFromBean(Object bean) {
+	public static Map<String, Object> orm(Object bean) {
 		HashMap<String, Object> beanMap = new HashMap<String, Object>();
-
 		Class<? extends Object> clz = bean.getClass();
 		Table tableAnnotation = clz.getAnnotation(Table.class);
 		if (tableAnnotation == null) {
@@ -419,16 +465,13 @@ public class Session {
 			PropertyDescriptor[] descritors = info.getPropertyDescriptors();
 			int size = descritors.length;
 			for (int index = 0; index < size; index++) {
-				if (descritors[index].getName().equalsIgnoreCase("class")) {
+				String propertyName = descritors[index].getName();
+				if (propertyName.equalsIgnoreCase("class")) {
 					continue;
 				}
-				String propertyName = descritors[index].getName();
 				Method method = descritors[index].getReadMethod();
-				if (method != null) {
+				if (method != null && method.getModifiers() == Modifier.PUBLIC) {
 					Object value = method.invoke(bean, new Object[] {});
-					if (value == null || value.equals(getInitialVlue(value))) {
-						continue;
-					}
 					beanMap.put(propertyName, value);
 				}
 			}
@@ -461,7 +504,7 @@ public class Session {
 	}
 
 	/**
-	 * Get primary key for data base table via <code>@TablePrimaryKeyAnnotation</code>.
+	 * Get primary key for data base table via annotation
 	 * 
 	 * @param bean
 	 *            java bean object
@@ -480,11 +523,7 @@ public class Session {
 	}
 
 	/**
-	 * Get the initial value for the specified object.
-	 * 
-	 * @param obj
-	 *            the object to be valued
-	 * @return the corresponding initial value for this object
+	 * 得到初始值.
 	 */
 	public static Object getInitialVlue(Object obj) {
 		if (obj == null) {
@@ -509,93 +548,5 @@ public class Session {
 			return new Short((short) 0);
 		}
 		return null;
-	}
-
-	/**
-	 * Insert and return auto increate key value.
-	 * 
-	 * @param bean
-	 *            java bean.
-	 * @return the AI value, if insert failed, return -1.
-	 * @throws SQLException
-	 *             throw SQLException if any.
-	 */
-	public synchronized long AIinsert(Object bean) throws SQLException {
-		if (!insert(bean))
-			return -1;
-		return getLong("SELECT (AUTO_INCREMENT-1)as id FROM information_schema.tables  WHERE table_name='"
-				+ getTableName(bean.getClass()) + "'");
-	}
-
-	/**
-	 * Fetch long value for first line first column in the resultset.
-	 * 
-	 * @param sql
-	 *            sql statement with spaceholders '?'
-	 * @param params
-	 *            parameter array
-	 * @return long value, if there is no such a result or there is any error
-	 *         return 0L.
-	 */
-	public long getLong(String sql, Object[] params) {
-		Connection conn = getConnection();
-		try {
-			PreparedStatement pstmt = conn.prepareStatement(sql);
-			fillStatement(pstmt, params);
-			ResultSet rs = pstmt.executeQuery();
-			if (rs.next()) {
-				return rs.getLong(1);
-			}
-		} catch (SQLException e) {
-			e.printStackTrace();
-		} finally {
-			if (!isInTransaction) {
-				dbManager.close();
-			}
-		}
-		return 0L;
-	}
-
-	/**
-	 * Fetch long value for first line first column in the resultset.
-	 * 
-	 * @param sql
-	 *            sql statement
-	 * @return long value, if there is no such a result or there is any error
-	 *         return 0L.
-	 */
-	public long getLong(String sql) {
-		return getLong(sql, null);
-	}
-
-	/**
-	 * Huge query and resolve method. Instead of loading resultset from data
-	 * base once, <br>
-	 * this method load data by need to prevent from OOM.
-	 * 
-	 * @param sql
-	 *            sql statement
-	 * @param executor
-	 *            query executor, implementing this interface and put your fetch
-	 *            logic into it.
-	 */
-	public void hugeQuery(String sql, QueryExecutor executor) {
-		Connection conn = dbManager.newConnection();
-		try {
-			PreparedStatement pst = conn.prepareStatement(sql, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
-			pst.setFetchSize(Integer.MIN_VALUE);
-			ResultSet rs = pst.executeQuery();
-			executor.result(rs);
-		} catch (Exception e) {
-			try {
-				e.printStackTrace();
-				executor.exception();
-			} catch (Exception e1) {
-				e1.printStackTrace();
-			}
-		} finally {
-			executor.after();
-			dbManager.close(conn);
-		}
 	}
 }
