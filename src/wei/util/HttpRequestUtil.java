@@ -12,9 +12,9 @@ import java.util.Map;
 import org.apache.log4j.Logger;
 
 public class HttpRequestUtil {
-	
-	private static Logger logger=Logger.getLogger(HttpRequestUtil.class);
-	
+
+	private static Logger logger = Logger.getLogger(HttpRequestUtil.class);
+
 	/**
 	 * 向指定URL发送GET方法的请求
 	 * 
@@ -43,7 +43,7 @@ public class HttpRequestUtil {
 			Map<String, List<String>> map = connection.getHeaderFields();
 			// 遍历所有的响应头字段
 			for (String key : map.keySet()) {
-				System.out.println(key + "--->" + map.get(key));
+				logger.debug(key + "->" + map.get(key));
 			}
 			// 定义 BufferedReader输入流来读取URL的响应
 			in = new BufferedReader(new InputStreamReader(connection.getInputStream(), "utf-8"));
@@ -55,7 +55,7 @@ public class HttpRequestUtil {
 			}
 			result = sb.toString();
 		} catch (Exception e) {
-			System.out.println("发送GET请求出现异常！" + e);
+			logger.debug("发送GET请求出现异常！" + e);
 			e.printStackTrace();
 		}
 		// 使用finally块来关闭输入流
@@ -65,7 +65,6 @@ public class HttpRequestUtil {
 					in.close();
 				}
 			} catch (Exception e2) {
-				e2.printStackTrace();
 			}
 		}
 		return result;
@@ -80,7 +79,7 @@ public class HttpRequestUtil {
 	 *            请求参数，请求参数应该是 name1=value1&name2=value2 的形式。
 	 * @return 所代表远程资源的响应结果
 	 */
-	public static String sendPost(String url, String param) {
+	public static String sendPost(String url) {
 		PrintWriter out = null;
 		BufferedReader in = null;
 		String result = "";
@@ -95,12 +94,16 @@ public class HttpRequestUtil {
 			// 发送POST请求必须设置如下两行
 			connection.setDoOutput(true);
 			connection.setDoInput(true);
-			// 获取URLConnection对象对应的输出流
-			out = new PrintWriter(connection.getOutputStream());
-			// 发送请求参数
-			out.print(param);
-			// flush输出流的缓冲
-			out.flush();
+			connection.setConnectTimeout(5000);
+			connection.setReadTimeout(5000);
+			// 建立实际的连接
+			connection.connect();
+			// 获取所有响应头字段
+			Map<String, List<String>> map = connection.getHeaderFields();
+			// 遍历所有的响应头字段
+			for (String key : map.keySet()) {
+				logger.debug(key + "->" + map.get(key));
+			}
 			// 定义 BufferedReader输入流来读取URL的响应
 			in = new BufferedReader(new InputStreamReader(connection.getInputStream(), "utf-8"));
 			char[] cbuf = new char[512];
@@ -111,7 +114,7 @@ public class HttpRequestUtil {
 			}
 			result = sb.toString();
 		} catch (Exception e) {
-			System.out.println("发送 POST 请求出现异常！" + e);
+			logger.debug("发送 POST 请求出现异常！" + e);
 			e.printStackTrace();
 		}
 		// 使用finally块来关闭输出流、输入流
@@ -132,7 +135,7 @@ public class HttpRequestUtil {
 
 	public static void main(String[] args) {
 		String url = "http://www.baidu.com";
-		String content = sendGet(url);
+		String content = sendPost(url);
 		System.out.println(content);
 	}
 }
