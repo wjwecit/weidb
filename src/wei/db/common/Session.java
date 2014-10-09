@@ -488,6 +488,9 @@ public class Session {
 				Method method = descritors[index].getReadMethod();
 				if (method != null && method.getModifiers() == Modifier.PUBLIC) {
 					Object value = method.invoke(bean, new Object[] {});
+					if (value == null) {
+						continue;
+					}
 					beanMap.put(propertyName, value);
 				}
 			}
