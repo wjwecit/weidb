@@ -37,6 +37,9 @@ public class DBConnectionManager {
 	private ThreadLocal<Connection> threadSession = new ThreadLocal<Connection>();
 
 	private synchronized static void initConnPool(String dbname) {
+		if (dataSourceMap.containsKey(dbname)) {
+			return;
+		}
 		ComboPooledDataSource ds = new ComboPooledDataSource(dbname);
 		dataSourceMap.put(dbname, ds);
 		log.info("Connection pool init successfully. " + ds.toString());
@@ -57,10 +60,8 @@ public class DBConnectionManager {
 		return dbType;
 	}
 
-	public DataSource getDataSource() {
-		if (!dataSourceMap.containsKey(dbname)) {
-			initConnPool(dbname);
-		}
+	public synchronized DataSource getDataSource() {
+		initConnPool(dbname);
 		return dataSourceMap.get(dbname);
 	}
 
