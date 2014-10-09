@@ -136,6 +136,7 @@ public class Session {
 			log.debug("sql=" + sql + ";map=" + map);
 			return map;
 		} catch (SQLException e) {
+			isInTransaction=false;
 			e.printStackTrace();
 		} finally {
 			checkClose();
@@ -161,6 +162,7 @@ public class Session {
 			log.debug("sql:" + sql + ";bean=" + bean);
 			return bean;
 		} catch (SQLException e) {
+			isInTransaction=false;
 			e.printStackTrace();
 		} finally {
 			checkClose();
@@ -188,6 +190,7 @@ public class Session {
 			log.debug("sql=" + sql + ";params=" + java.util.Arrays.toString(params) + ";bean=" + bean);
 			return bean;
 		} catch (SQLException e) {
+			isInTransaction=false;
 			e.printStackTrace();
 		} finally {
 			checkClose();
@@ -211,6 +214,7 @@ public class Session {
 			log.debug("sql=" + sql + ";listsize=" + list.size());
 			return list;
 		} catch (SQLException e) {
+			isInTransaction=false;
 			e.printStackTrace();
 		} finally {
 			checkClose();
@@ -225,15 +229,16 @@ public class Session {
 	 *            SQL语句
 	 * @return 如果映射成功,返回HashMap的列表,否则返回null;
 	 */
-	public List<Map<String, Object>> getMapList(String sql) {
+	public List<Map<String, Object>> getMapList(String sql,Object[]params) {
 		QueryRunner run = new QueryRunner();
 		MapListHandler handler = new MapListHandler();
 		try {
 			reConnect();
-			List<Map<String, Object>> list = run.query(g_connection, sql, handler);
-			log.debug("sql=" + sql + ";listsize=" + list.size());
+			List<Map<String, Object>> list = run.query(g_connection, sql, handler,params);
+			log.debug("sql=" + sql + ";params=" + java.util.Arrays.toString(params) + ";listsize=" + list.size());
 			return list;
 		} catch (SQLException e) {
+			isInTransaction=false;
 			e.printStackTrace();
 		} finally {
 			checkClose();
@@ -273,6 +278,7 @@ public class Session {
 				return rs.getLong(1);
 			}
 		} catch (SQLException e) {
+			isInTransaction=false;
 			e.printStackTrace();
 		} finally {
 			checkClose();
@@ -391,8 +397,8 @@ public class Session {
 	 */
 	public int executeUpdate(String sql, Object[] params) throws Exception {
 		int res = 0;
-		reConnect();
 		try {
+			reConnect();
 			PreparedStatement pstmt = g_connection.prepareStatement(sql);
 			fillStatement(pstmt, params);
 			res = pstmt.executeUpdate();
@@ -401,15 +407,25 @@ public class Session {
 			}
 			log.debug("Update:" + res + "; sql=" + sql + ";params=" + java.util.Arrays.toString(params) + ";");
 		} catch (SQLException e) {
+			isInTransaction=false;
 			throw e;
 		} finally {
 			checkClose();
 		}
 		return res;
 	}
+	
+	public PageTable getTable(){
+		if(dbManager.getDbType()==DBConnectionManager.DB_TYPE_MYSQL){
+			return new MysqlPageTable(this);
+		}else if(dbManager.getDbType()==DBConnectionManager.DB_TYPE_ORACLE){
+			return new OraclePageTable(this);
+		}
+		return null;
+	}
 
 	/**
-	 * 将PreparedStatement中的参数点位符进行填充.
+	 * 将PreparedStatement中的参数占位符进行填充.
 	 * 
 	 * @param pstmt
 	 *            PreaparedStatement

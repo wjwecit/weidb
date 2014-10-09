@@ -3,27 +3,26 @@
  */
 package wei.db.common;
 
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
-
-import org.apache.log4j.Logger;
 
 /**
  * Pager for oracle data base.
  * @author Qin-Wei
  *
  */
-public class OraclePageTable extends AbstractPageTable {
+public class OraclePageTable extends PageTable {
 	
-	/**log日志对象**/
-	private static Logger log = Logger.getLogger(OraclePageTable.class);
+	public OraclePageTable(Session session) {
+		super(session);
+	}
 	
-
 	/* (non-Javadoc)
 	 * @see wei.db.common.AbstractPageTable#getCountSql()
 	 */
 	@Override
 	protected String getCountSql() {
+		if(sql==null||sql.isEmpty()){
+			throw new RuntimeException("sql can not empty!");
+		}
 		return "select count(*) from(" + this.sql + ")";
 	}
 
@@ -32,19 +31,16 @@ public class OraclePageTable extends AbstractPageTable {
 	 */
 	@Override
 	protected String getPageSql() {
+		if(sql==null||sql.isEmpty()){
+			throw new RuntimeException("sql can not empty!");
+		}
 		return "select * from (select rownum rn,ttquery.* from ("+sql+")ttquery where rownum<=?) where rn>?";
 	}
 
 	@Override
-	protected PreparedStatement buildPageStatement() throws SQLException {
-		String sql_s = getPageSql();
-		PreparedStatement pst = getConnection().prepareStatement(sql_s);
+	protected Object[] getPageParameters() {
 		long maxrow=(currentPage - 1) * pageSize;
 		long minrow=(currentPage)>1?(maxrow-pageSize):0;
-		pst.setLong(1, maxrow);
-		pst.setLong(2, minrow);
-		log.info(sql_s+";pageNo:"+currentPage+";pageSize:"+pageSize);
-		return pst;
+		return new Object[]{maxrow,minrow};
 	}
-
 }

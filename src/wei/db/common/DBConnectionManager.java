@@ -80,7 +80,6 @@ public class DBConnectionManager {
 				conn = dataSource.getConnection();
 				// 把它绑定到当前线程上
 				threadSession.set(conn);
-				System.err.println(dbname);
 			}
 		} catch (SQLException e) {
 			e.printStackTrace();
