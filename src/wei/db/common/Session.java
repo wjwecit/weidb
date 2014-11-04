@@ -62,7 +62,7 @@ public class Session {
 	 */
 	public Session(String dbname) {
 		dbManager = new DBConnectionManager();
-		dbManager.dbname=dbname;
+		dbManager.setDbname(dbname);
 	}
 
 	/**

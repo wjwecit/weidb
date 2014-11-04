@@ -26,12 +26,12 @@ public class DBConnectionManager {
 	/** oracle类型DB, 值为{@value} **/
 	public static final int DB_TYPE_ORACLE = 0x2;
 
-	private static HashMap<String,ComboPooledDataSource> dataSourceMap=new HashMap<String,ComboPooledDataSource>();
+	private static HashMap<String, ComboPooledDataSource> dataSourceMap = new HashMap<String, ComboPooledDataSource>();
 
 	/** 数据库类型, 可以是{@link #DB_TYPE_MYSQL}和{@link #DB_TYPE_ORACLE} **/
 	public int dbType;
 
-	public String dbname = "defaultdb";
+	private String dbname = "defaultdb";
 
 	/** 用来把Connection绑定到当前线程上的变量 **/
 	private ThreadLocal<Connection> threadSession = new ThreadLocal<Connection>();
@@ -46,7 +46,7 @@ public class DBConnectionManager {
 	}
 
 	public int getDbType() {
-		if(!dataSourceMap.containsKey(dbname)){
+		if (!dataSourceMap.containsKey(dbname)) {
 			initConnPool(dbname);
 		}
 		String dbClass = dataSourceMap.get(dbname).getDriverClass();
@@ -60,9 +60,35 @@ public class DBConnectionManager {
 		return dbType;
 	}
 
+	/**
+	 * 从数据源池中取出指定名称的数据源.
+	 * 
+	 * @return 当前数据库名对应的数据源.
+	 */
 	public synchronized DataSource getDataSource() {
 		initConnPool(dbname);
 		return dataSourceMap.get(dbname);
+	}
+
+	/**
+	 * 将当前使用的数据库名设定成指定的数据库名,并立即进行初始化.
+	 * 
+	 * @param dbname
+	 *            数据库名
+	 */
+	public void setDbname(String dbname) {
+		this.dbname = dbname;
+		initConnPool(dbname);
+	}
+
+	/**
+	 * 获取当前数据库名.
+	 * 
+	 * @return 当前数据库名
+	 */
+	public String getDbname() {
+		initConnPool(dbname);
+		return dbname;
 	}
 
 	/**
@@ -76,7 +102,7 @@ public class DBConnectionManager {
 		try {
 			// 当前线程上没有Connection的实例
 			if (null == conn || conn.isClosed()) {
-				DataSource dataSource=getDataSource();
+				DataSource dataSource = getDataSource();
 				// 从连接池中取出一个连接实例
 				conn = dataSource.getConnection();
 				// 把它绑定到当前线程上
@@ -105,7 +131,7 @@ public class DBConnectionManager {
 	public synchronized Connection newConnection() {
 		Connection conn = null;
 		try {
-			DataSource dataSource=getDataSource();
+			DataSource dataSource = getDataSource();
 			// 从连接池中取出一个连接实例
 			conn = dataSource.getConnection();
 		} catch (SQLException e) {
